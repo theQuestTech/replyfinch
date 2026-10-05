@@ -93,7 +93,9 @@ export const useDesk = create<DeskState>((set, get) => ({
           ? { ...s.unread, [visitorId]: (s.unread[visitorId] ?? 0) + 1 }
           : s.unread;
       const typing = m.authorType === 'visitor' ? { ...s.typing, [m.conversationId]: null } : s.typing;
-      return { messages, unread, typing };
+      const conversations =
+        conv && m.authorType === 'visitor' ? { ...s.conversations, [conv.id]: { ...conv, preview: m.body, lastMessageAt: m.createdAt } } : s.conversations;
+      return { messages, unread, typing, conversations };
     }),
 
   setTyping: (conversationId, name) => set((s) => ({ typing: { ...s.typing, [conversationId]: name } })),

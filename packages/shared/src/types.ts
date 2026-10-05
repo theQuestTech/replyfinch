@@ -55,6 +55,8 @@ export interface Conversation {
   firstReplyAt: number | null;
   endedAt: number | null;
   lastMessageAt: number;
+  /** The visitor's latest message, for queue previews. */
+  preview: string | null;
 }
 
 export interface Message {

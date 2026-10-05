@@ -14,3 +14,6 @@ export function deriveVisitorState(
   if (conversationStatus === 'waiting' || conversationStatus === 'active') return 'chatting';
   return now - v.lastActivityAt >= IDLE_AFTER_MS ? 'idle' : 'browsing';
 }
+
+/** First-reply target: a waiting chat should get an agent's first message within this time. */
+export const FIRST_REPLY_TARGET_MS = 2 * 60 * 1000;

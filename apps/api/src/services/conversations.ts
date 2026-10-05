@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Conversation, Message } from '@replyfinch/shared';
 import type { Db } from '../db/client';
 import { conversations, messages, users, visitors } from '../db/schema';
@@ -26,6 +26,12 @@ export function messageDto(m: MsgRow): Message {
 export function createConversationService(db: Db) {
   async function dto(row: ConvRow): Promise<Conversation> {
     const [v] = await db.select({ name: visitors.name }).from(visitors).where(eq(visitors.id, row.visitorId));
+    const [last] = await db
+      .select({ body: messages.body })
+      .from(messages)
+      .where(and(eq(messages.conversationId, row.id), eq(messages.authorType, 'visitor')))
+      .orderBy(desc(messages.createdAt))
+      .limit(1);
     const assignee = row.assigneeId
       ? (await db.select({ name: users.name }).from(users).where(eq(users.id, row.assigneeId)))[0]
       : undefined;
@@ -43,6 +49,7 @@ export function createConversationService(db: Db) {
       firstReplyAt: row.firstReplyAt?.getTime() ?? null,
       endedAt: row.endedAt?.getTime() ?? null,
       lastMessageAt: row.lastMessageAt.getTime(),
+      preview: last?.body ?? null,
     };
   }
 

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { CircleAlert, Clock, Eye, MessageCircle, Users } from 'lucide-react';
-import type { HomeStats } from '@replyfinch/shared';
+import { FIRST_REPLY_TARGET_MS, type HomeStats } from '@replyfinch/shared';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { duration, greeting, initials, visitorLabel } from '../lib/format';
@@ -19,7 +19,7 @@ export function Home() {
   const navigate = useNavigate();
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 10_000);
+    const t = setInterval(() => setNow(Date.now()), 5_000);
     return () => clearInterval(t);
   }, []);
 
@@ -36,10 +36,7 @@ export function Home() {
   const online = team.filter((t) => t.status !== 'offline');
   const visitorsOnline = Object.values(visitors).filter((v) => !v.left).length;
 
-  const open = (visitorId: string) => {
-    openChat(visitorId, 'side');
-    navigate('/visitors');
-  };
+  const nearTarget = queue.filter((c) => FIRST_REPLY_TARGET_MS - (now - c.startedAt) < 60_000).length;
 
   return (
     <div className="flex min-h-full flex-col gap-6 px-8 py-7">
@@ -52,9 +49,18 @@ export function Home() {
             <span className={clsx('font-semibold', queue.length ? 'text-danger' : 'text-success')}>
               {queue.length ? `${queue.length} customer${queue.length > 1 ? 's' : ''} waiting` : 'No one waiting'}
             </span>
+            {nearTarget > 0 && ` · ${nearTarget} close to or past the 2-minute first-reply target`}
             {' · '}
             {visitorsOnline} {visitorsOnline === 1 ? 'person' : 'people'} on your websites right now
           </p>
+        </div>
+        <div className="flex gap-0.5 rounded-[10px] bg-muted p-1">
+          <span className="rounded-[7px] bg-surface px-3 py-1.5 text-[13px] font-semibold shadow-sm">Today</span>
+          {['7 days', '30 days'].map((r) => (
+            <span key={r} title="Coming soon" className="px-3 py-1.5 text-[13px] font-medium text-ink-2/60">
+              {r}
+            </span>
+          ))}
         </div>
       </div>
 
@@ -88,8 +94,13 @@ export function Home() {
             const v = visitors[c.visitorId];
             const label = c.visitorName ?? (v ? visitorLabel(v) : 'Visitor');
             const waited = now - c.startedAt;
+            const left = FIRST_REPLY_TARGET_MS - waited;
             return (
-              <div key={c.id} className={clsx('flex items-center gap-3.5 border-b border-line px-5 py-3.5', i === 0 && 'bg-primary-subtle')}>
+              <div
+                key={c.id}
+                data-testid="queue-row"
+                className={clsx('flex items-center gap-3.5 border-b border-line px-5 py-3.5', i === 0 && 'bg-primary-subtle')}
+              >
                 <Avatar text={initials(label)} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
@@ -97,21 +108,23 @@ export function Home() {
                     <MessageCircle className="size-3.5 text-ink-2" />
                     <span className="text-xs text-ink-2">Web chat{c.department ? ` · ${c.department}` : ''}</span>
                   </div>
-                  <LastMessage conversationId={c.id} />
+                  <div className="truncate text-[13px] text-ink-2">{c.preview ?? 'Waiting for an agent'}</div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
                   <span className="text-xs font-medium text-ink-2">Waiting {duration(waited)}</span>
-                  <Pill tone={waited > 120_000 ? 'danger' : waited > 60_000 ? 'warning' : 'primary'}>{waited > 60_000 ? 'Reply now' : 'New'}</Pill>
+                  <Pill tone={left <= 0 ? 'danger' : left < 60_000 ? 'danger' : 'warning'}>
+                    {left <= 0 ? `Overdue ${duration(-left)}` : `Reply in ${duration(left)}`}
+                  </Pill>
                 </div>
-                <Button variant={i === 0 ? 'primary' : 'secondary'} onClick={() => open(c.visitorId)} disabled={!v}>
-                  Open
+                <Button variant={i === 0 ? 'primary' : 'secondary'} onClick={() => openChat(c.visitorId, 'side')} disabled={!v || v.left}>
+                  Accept
                 </Button>
               </div>
             );
           })}
           <div className="flex-1" />
           <div className="flex items-center border-t border-line px-5 py-3.5 text-xs text-ink-2">
-            Chats wait here until an agent sends the first message.
+            Chats wait here until an agent accepts them and sends the first message.
             <div className="flex-1" />
             <button onClick={() => navigate('/visitors')} className="cursor-pointer text-[13px] font-semibold text-primary">
               Open visitors →
@@ -170,14 +183,6 @@ export function Home() {
   );
 }
 
-function LastMessage({ conversationId }: { conversationId: string }) {
-  const last = useDesk((s) => {
-    const list = s.messages[conversationId];
-    return list?.filter((m) => m.authorType === 'visitor').at(-1)?.body;
-  });
-  return <div className="truncate text-[13px] text-ink-2">{last ?? 'Waiting for an agent'}</div>;
-}
-
 function Stat({
   icon: Icon,
   tone,
@@ -206,7 +211,7 @@ function Stat({
   );
 }
 
-/** Conversations per hour for today (local hours, 8:00–19:00 shown). */
+/** Conversations per hour over the last 12 hours (local time), current hour highlighted. */
 function HourChart({ data }: { data: { hour: number; count: number }[] }) {
   const offset = -new Date().getTimezoneOffset() / 60;
   const byLocal = new Map<number, number>();
@@ -214,24 +219,31 @@ function HourChart({ data }: { data: { hour: number; count: number }[] }) {
     const h = (((d.hour + offset) % 24) + 24) % 24;
     byLocal.set(h, (byLocal.get(h) ?? 0) + d.count);
   }
-  const hours = Array.from({ length: 12 }, (_, i) => i + 8);
-  const max = Math.max(1, ...hours.map((h) => byLocal.get(h) ?? 0));
   const current = new Date().getHours();
+  const hours = Array.from({ length: 12 }, (_, i) => (current - 11 + i + 24) % 24).filter((h) => h <= current);
+  const max = Math.max(1, ...hours.map((h) => byLocal.get(h) ?? 0));
+  const peak = hours.reduce((best, h) => ((byLocal.get(h) ?? 0) > (byLocal.get(best) ?? 0) ? h : best), hours[0] ?? 0);
+  const label = (h: number) => `${h % 12 || 12}${h < 12 ? 'a' : 'p'}`;
   return (
-    <div className="mt-3 flex min-h-[140px] flex-1 items-end gap-2">
-      {hours.map((h) => {
-        const n = byLocal.get(h) ?? 0;
-        return (
-          <div key={h} className="flex h-full flex-1 flex-col items-center justify-end gap-1.5" title={`${n} conversations`}>
-            <div
-              className={clsx('w-full rounded-t', h === current ? 'bg-gold' : h > current ? 'bg-muted' : 'bg-primary')}
-              style={{ height: `${Math.max(4, (n / max) * 110)}px` }}
-            />
-            <span className="text-[10px] font-medium text-ink-2">{h % 12 || 12}{h < 12 ? 'a' : 'p'}</span>
-          </div>
-        );
-      })}
-    </div>
+    <>
+      <div className="text-xs text-ink-2">
+        {(byLocal.get(peak) ?? 0) > 0 ? `Busiest: ${label(peak)}m · ${byLocal.get(peak)} conversations` : 'No conversations yet today'}
+      </div>
+      <div className="mt-3 flex min-h-[140px] flex-1 items-end gap-2">
+        {hours.map((h) => {
+          const n = byLocal.get(h) ?? 0;
+          return (
+            <div key={h} className="flex h-full flex-1 flex-col items-center justify-end gap-1.5" title={`${label(h)}m: ${n} conversations`}>
+              {n > 0 && <span className="text-[10px] font-semibold text-ink-2">{n}</span>}
+              <div
+                className={clsx('w-full rounded-t', n === 0 ? 'bg-muted' : h === current ? 'bg-gold' : 'bg-primary')}
+                style={{ height: `${n === 0 ? 4 : Math.max(8, (n / max) * 110)}px` }}
+              />
+              <span className="text-[10px] font-medium text-ink-2">{label(h)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }
-

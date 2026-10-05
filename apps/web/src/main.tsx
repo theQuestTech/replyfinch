@@ -1,0 +1,55 @@
+import { StrictMode, type ReactNode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Construction } from 'lucide-react';
+import './index.css';
+import { useAuth } from './lib/auth';
+import { Shell } from './components/Shell';
+import { Home } from './pages/Home';
+import { Login } from './pages/Login';
+import { Visitors } from './pages/Visitors';
+
+const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 10_000, retry: 1 } } });
+
+function RequireAuth({ children }: { children: ReactNode }) {
+  const token = useAuth((s) => s.token);
+  return token ? children : <Navigate to="/login" replace />;
+}
+
+function ComingSoon() {
+  const { pathname } = useLocation();
+  const name = pathname.slice(1).replace(/-/g, ' ');
+  return (
+    <div className="grid h-full place-items-center text-center text-ink-2">
+      <div>
+        <Construction className="mx-auto mb-3 size-8 text-gold" />
+        <div className="text-lg font-semibold text-ink capitalize">{name}</div>
+        <div className="text-sm">Coming in a later phase — see docs/PLAN.md.</div>
+      </div>
+    </div>
+  );
+}
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route
+            element={
+              <RequireAuth>
+                <Shell />
+              </RequireAuth>
+            }
+          >
+            <Route index element={<Home />} />
+            <Route path="visitors" element={<Visitors />} />
+            <Route path="*" element={<ComingSoon />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </QueryClientProvider>
+  </StrictMode>,
+);

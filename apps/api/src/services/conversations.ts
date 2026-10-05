@@ -162,6 +162,31 @@ export function createConversationService(db: Db) {
       return { conversation: conv!, messages: created.map(messageDto) };
     },
 
+    /** An agent messages a browsing visitor first: the chat starts already assigned to them. */
+    async startByAgent(accountId: string, visitorId: string, agent: { id: string; name: string }, body: string, clientId: string) {
+      const now = new Date();
+      const [conv] = await db
+        .insert(conversations)
+        .values({
+          id: newId.conversation(),
+          accountId,
+          visitorId,
+          status: 'active',
+          assigneeId: agent.id,
+          participantIds: [agent.id],
+          firstReplyAt: now,
+        })
+        .returning();
+      const sys = await insertMessage(conv!, {
+        authorType: 'system',
+        authorId: agent.id,
+        authorName: agent.name,
+        body: `${agent.name} started the chat`,
+      });
+      const msg = await insertMessage(conv!, { authorType: 'agent', authorId: agent.id, authorName: agent.name, body, clientId });
+      return { conversation: conv!, messages: [messageDto(sys.message), messageDto(msg.message)] };
+    },
+
     /**
      * Add a message. When an agent sends their first message in a conversation they
      * join it: they become a participant (and the assignee if nobody is), and a

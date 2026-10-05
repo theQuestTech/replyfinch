@@ -42,3 +42,9 @@ export const visitorPatchSchema = z.object({
   notes: z.string().max(5000).nullable().optional(),
   tags: z.array(z.string().trim().min(1).max(40)).max(30).optional(),
 });
+
+export const chatInitiateSchema = z.object({
+  visitorId: z.string().min(1),
+  body: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH),
+  clientId: z.string().min(1).max(64),
+});

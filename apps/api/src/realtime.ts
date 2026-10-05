@@ -3,6 +3,7 @@ import { Server, type Namespace, type Socket } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import type { Redis } from 'ioredis';
 import {
+  chatInitiateSchema,
   chatStartSchema,
   messageSendSchema,
   OFFLINE_AFTER_MS,
@@ -364,6 +365,25 @@ export function createRealtime(d: Deps) {
         await syncVisitorConversation(dto);
         await broadcastTeam(acc);
       }
+    });
+
+    on('chat:initiate', async (...[p, ack]: Parameters<AgentClientEvents['chat:initiate']>) => {
+      const parsed = chatInitiateSchema.safeParse(p);
+      if (!parsed.success) return fail(ack, 'invalid_input');
+      const visitor = await d.visitors.get(acc, parsed.data.visitorId);
+      if (!visitor) return fail(ack, 'not_found');
+      if (await d.conversations.openForVisitor(visitor.id)) return fail(ack, 'already_chatting');
+      const started = await d.conversations.startByAgent(acc, visitor.id, { id: uid, name }, parsed.data.body, parsed.data.clientId);
+      const conv = await d.conversations.dto(started.conversation);
+      await d.presence.updateVisitor(acc, visitor.id, (rec) => {
+        rec.pastChats += 1;
+      });
+      ack({ ok: true, data: { conversation: conv, messages: started.messages } });
+      toVisitor(visitor.id).emit('chat:resume', { conversation: conv, messages: started.messages, proactive: true });
+      toAgents(acc).emit('conversation:update', conv);
+      for (const m of started.messages) toAgents(acc).emit('message:new', m);
+      await syncVisitorConversation(conv);
+      await broadcastTeam(acc);
     });
 
     on('typing', async (...[p]: Parameters<AgentClientEvents['typing']>) => {

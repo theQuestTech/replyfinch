@@ -218,6 +218,30 @@ describe('visitor → chat → agent joins by typing', () => {
     await removed;
   });
 
+  it('lets an agent start a chat with a browsing visitor', async () => {
+    const { token } = await login();
+    const agent = agentSocket(token);
+    await waitFor(agent, 'visitors:snapshot');
+    const v = await newVisitor();
+    const visitor = visitorSocket(v.visitorToken);
+    await waitFor<LiveVisitor>(agent, 'visitor:update', (x) => x.id === v.visitorId);
+    const resumed = waitFor<{ conversation: Conversation; messages: Message[]; proactive?: boolean }>(visitor, 'chat:resume');
+    const started = await emitAck<{ conversation: Conversation; messages: Message[] }>(agent, 'chat:initiate', {
+      visitorId: v.visitorId,
+      body: 'Hi! Need help finding a book?',
+      clientId: 'p1',
+    });
+    expect(started.conversation.status).toBe('active');
+    expect(started.conversation.assigneeName).toBe('Maya Chen');
+    const r = await resumed;
+    expect(r.proactive).toBe(true);
+    expect(r.messages.map((m) => m.body)).toContain('Hi! Need help finding a book?');
+    await expect(
+      emitAck(agent, 'chat:initiate', { visitorId: v.visitorId, body: 'again', clientId: 'p2' }),
+    ).rejects.toThrow('already_chatting');
+    visitor.disconnect();
+  });
+
   it('lets an agent edit visitor details and broadcasts them', async () => {
     const { token } = await login();
     const agent = agentSocket(token);

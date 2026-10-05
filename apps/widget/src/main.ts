@@ -1,0 +1,418 @@
+// Replyfinch website widget.
+// Embed:  <script src="https://<widget-host>/widget.js" data-account="acc_…" data-api="https://<api-host>" async></script>
+import { io, type Socket } from 'socket.io-client';
+// Import shared code by subpath so the validation library (zod) stays out of the bundle.
+import { HEARTBEAT_INTERVAL_MS } from '@replyfinch/shared/visitor-state';
+import type { Conversation, Message, WidgetConfig } from '@replyfinch/shared/types';
+import type { VisitorClientEvents, VisitorServerEvents } from '@replyfinch/shared/events';
+import { styles } from './styles';
+
+type Sock = Socket<VisitorServerEvents, VisitorClientEvents>;
+
+const BIRD =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="#14213D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7h.01"/><path d="M3.4 18H12a8 8 0 0 0 8-8V7a4 4 0 0 0-7.28-2.3L2 20"/><path d="m20 7 2 .5-2 .5"/><path d="M10 18v3"/><path d="M14 17.75V21"/><path d="M7 18a6 6 0 0 0 3.84-10.61"/></svg>';
+const CHAT =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="#FFC93C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>';
+const CLOSE =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+const SEND =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>';
+
+const store = {
+  get(k: string) {
+    try {
+      return localStorage.getItem(k);
+    } catch {
+      return null;
+    }
+  },
+  set(k: string, v: string) {
+    try {
+      localStorage.setItem(k, v);
+    } catch {
+      /* private mode */
+    }
+  },
+};
+
+function newSessionFlag(): boolean {
+  try {
+    if (sessionStorage.getItem('rf_session')) return false;
+    sessionStorage.setItem('rf_session', '1');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const cid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, html?: string) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (html !== undefined) e.innerHTML = html;
+  return e;
+}
+
+class ReplyfinchWidget {
+  private socket: Sock | null = null;
+  private config: WidgetConfig | null = null;
+  private visitorName: string | null = null;
+  private visitorEmail: string | null = null;
+  private conversation: Conversation | null = null;
+  private messages: Message[] = [];
+  private pending = new Map<string, Message>();
+  private unread = 0;
+  private open = false;
+  private agentTyping: string | null = null;
+  private typingTimer: number | undefined;
+  private isTyping = false;
+
+  private root!: ShadowRoot;
+  private panel!: HTMLDivElement;
+  private body!: HTMLDivElement;
+  private badge!: HTMLSpanElement;
+  private typingEl!: HTMLDivElement;
+  private composer!: HTMLDivElement;
+  private subtitle!: HTMLDivElement;
+
+  constructor(private accountId: string, private api: string) {}
+
+  async start() {
+    this.mount();
+    const res = await fetch(`${this.api}/widget/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        accountId: this.accountId,
+        visitorToken: store.get(`rf_token_${this.accountId}`) ?? undefined,
+        newSession: newSessionFlag(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      }),
+    });
+    if (!res.ok) throw new Error(`Replyfinch: session failed (${res.status})`);
+    const s = (await res.json()) as {
+      visitorToken: string;
+      name: string | null;
+      email: string | null;
+      config: WidgetConfig;
+    };
+    store.set(`rf_token_${this.accountId}`, s.visitorToken);
+    this.config = s.config;
+    this.visitorName = s.name;
+    this.visitorEmail = s.email;
+    this.renderHeader();
+    this.render();
+    this.connect(s.visitorToken);
+    this.trackActivity();
+  }
+
+  // ------------------------------------------------------------- realtime
+  private connect(token: string) {
+    const socket: Sock = io(`${this.api}/visitor`, { auth: { token }, transports: ['websocket', 'polling'] });
+    this.socket = socket;
+    socket.on('connect', () => this.sendPage());
+    socket.on('chat:resume', ({ conversation, messages, proactive }) => {
+      this.conversation = conversation;
+      this.messages = messages;
+      this.render();
+      if (proactive && !this.open) {
+        this.toggle(true);
+      }
+    });
+    socket.on('message:new', (m) => {
+      if (!this.conversation || m.conversationId !== this.conversation.id) return;
+      this.addMessage(m);
+      if (m.authorType !== 'visitor') {
+        this.agentTyping = null;
+        if (!this.open) this.setUnread(this.unread + 1);
+      }
+    });
+    socket.on('typing', (t) => {
+      if (!this.conversation || t.conversationId !== this.conversation.id) return;
+      this.agentTyping = t.isTyping ? t.name : null;
+      this.renderTyping();
+    });
+    socket.on('chat:ended', () => {
+      if (this.conversation) this.conversation = { ...this.conversation, status: 'ended' };
+      this.agentTyping = null;
+      this.render();
+    });
+    setInterval(() => socket.connected && socket.emit('visitor:heartbeat'), HEARTBEAT_INTERVAL_MS);
+  }
+
+  private sendPage() {
+    this.socket?.emit('visitor:page', { url: location.href, title: document.title, referrer: document.referrer || null });
+  }
+
+  private trackActivity() {
+    // Single-page apps: report client-side navigations too.
+    for (const fn of ['pushState', 'replaceState'] as const) {
+      const orig = history[fn];
+      history[fn] = function (this: History, ...args: Parameters<typeof orig>) {
+        const r = orig.apply(this, args);
+        queueMicrotask(() => window.dispatchEvent(new Event('rf:navigate')));
+        return r;
+      };
+    }
+    let lastUrl = location.href;
+    const onNav = () => {
+      if (location.href === lastUrl) return;
+      lastUrl = location.href;
+      setTimeout(() => this.sendPage(), 50); // let the app update document.title
+    };
+    window.addEventListener('rf:navigate', onNav);
+    window.addEventListener('popstate', onNav);
+
+    let last = 0;
+    const ping = () => {
+      const now = Date.now();
+      if (now - last < 30_000) return;
+      last = now;
+      this.socket?.emit('visitor:activity');
+    };
+    for (const ev of ['mousemove', 'keydown', 'scroll', 'click', 'touchstart']) {
+      window.addEventListener(ev, ping, { passive: true });
+    }
+  }
+
+  // ------------------------------------------------------------- UI
+  private mount() {
+    const host = el('div', { id: 'replyfinch-widget' });
+    document.body.appendChild(host);
+    this.root = host.attachShadow({ mode: 'open' });
+    const style = el('style');
+    style.textContent = styles;
+    const wrap = el('div', { class: 'rf' });
+    this.panel = el('div', { class: 'panel', hidden: '', role: 'dialog', 'aria-label': 'Chat' }) as HTMLDivElement;
+    const header = el('div', { class: 'header' });
+    header.append(el('div', { class: 'logo' }, BIRD));
+    const titles = el('div');
+    titles.append(el('div', { class: 'title', 'data-rf': 'title' }, 'Chat with us'));
+    this.subtitle = el('div', { class: 'subtitle' }) as HTMLDivElement;
+    titles.append(this.subtitle);
+    header.append(titles);
+    const close = el('button', { class: 'close', 'aria-label': 'Close chat' }, CLOSE);
+    close.addEventListener('click', () => this.toggle(false));
+    header.append(close);
+    this.body = el('div', { class: 'body' }) as HTMLDivElement;
+    this.typingEl = el('div', { class: 'typing' }) as HTMLDivElement;
+    this.composer = el('div') as HTMLDivElement;
+    this.panel.append(header, this.body, this.typingEl, this.composer);
+
+    const launcher = el('button', { class: 'launcher', 'aria-label': 'Open chat' }, CHAT);
+    this.badge = el('span', { class: 'badge', hidden: '' }) as HTMLSpanElement;
+    launcher.append(this.badge);
+    launcher.addEventListener('click', () => this.toggle());
+    wrap.append(this.panel, launcher);
+    this.root.append(style, wrap);
+  }
+
+  private toggle(force?: boolean) {
+    this.open = force ?? !this.open;
+    this.panel.hidden = !this.open;
+    if (this.open) {
+      this.setUnread(0);
+      this.scrollDown();
+      (this.root.querySelector('textarea, input') as HTMLElement | null)?.focus();
+    }
+  }
+
+  private setUnread(n: number) {
+    this.unread = n;
+    this.badge.textContent = String(n);
+    this.badge.hidden = n === 0;
+  }
+
+  private renderHeader() {
+    const title = this.root.querySelector('[data-rf=title]');
+    if (title && this.config) title.textContent = this.config.accountName;
+    const online = (this.config?.agentsOnline ?? 0) > 0;
+    this.subtitle.innerHTML = `<span class="dot ${online ? '' : 'off'}"></span>${
+      online ? 'We typically reply in a few minutes' : "We're away — leave a message and we'll reply by email"
+    }`;
+  }
+
+  private render() {
+    this.body.innerHTML = '';
+    this.composer.innerHTML = '';
+    if (!this.conversation) return this.renderPrechat();
+    for (const m of this.messages) this.body.append(this.messageEl(m));
+    for (const m of this.pending.values()) this.body.append(this.messageEl(m, true));
+    this.renderTyping();
+    if (this.conversation.status === 'ended') this.renderEnded();
+    else this.renderComposer();
+    this.scrollDown();
+  }
+
+  private renderPrechat() {
+    this.typingEl.textContent = '';
+    const f = el('form', { class: 'prechat' }) as HTMLFormElement;
+    f.append(el('div', { class: 'intro' }, "Hi there 👋 Tell us a little about you and we'll connect you with the right team."));
+    const name = el('input', { name: 'name', required: '', placeholder: 'Your name', autocomplete: 'name' }) as HTMLInputElement;
+    if (this.visitorName) name.value = this.visitorName;
+    const email = el('input', { name: 'email', type: 'email', placeholder: 'you@example.com', autocomplete: 'email' }) as HTMLInputElement;
+    if (this.visitorEmail) email.value = this.visitorEmail;
+    const dept = el('select', { name: 'department' }) as HTMLSelectElement;
+    for (const d of this.config?.departments ?? []) dept.append(el('option', { value: d }, d));
+    const message = el('textarea', { name: 'message', required: '', rows: '3', placeholder: 'How can we help?' }) as HTMLTextAreaElement;
+    const label = (t: string, input: HTMLElement) => {
+      const l = el('label');
+      l.append(t, input);
+      return l;
+    };
+    const err = el('div', { class: 'error' });
+    const submit = el('button', { class: 'btn', type: 'submit' }, 'Start chat') as HTMLButtonElement;
+    f.append(label('Name', name), label('Email', email), label('Department', dept), label('Message', message), err, submit);
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!this.socket) return;
+      submit.disabled = true;
+      err.textContent = '';
+      const res = await this.socket.timeout(10_000).emitWithAck('chat:start', {
+        name: name.value.trim(),
+        email: email.value.trim() || undefined,
+        department: dept.value,
+        message: message.value.trim(),
+        clientId: cid(),
+      }).catch(() => ({ ok: false as const, error: 'timeout' }));
+      submit.disabled = false;
+      if (!res.ok) {
+        err.textContent = 'Something went wrong. Please try again.';
+        return;
+      }
+      this.visitorName = name.value.trim();
+      this.conversation = res.data.conversation;
+      this.messages = res.data.messages;
+      this.render();
+    });
+    this.body.append(f);
+  }
+
+  private renderComposer() {
+    const c = el('div', { class: 'composer' });
+    const ta = el('textarea', { rows: '1', placeholder: 'Type a message…', 'aria-label': 'Message' }) as HTMLTextAreaElement;
+    const send = el('button', { class: 'send', 'aria-label': 'Send' }, SEND) as HTMLButtonElement;
+    const submit = () => {
+      const body = ta.value.trim();
+      if (!body) return;
+      ta.value = '';
+      this.setTyping(false);
+      this.send(body);
+    };
+    ta.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        submit();
+      }
+    });
+    ta.addEventListener('input', () => {
+      ta.style.height = 'auto';
+      ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
+      this.setTyping(ta.value.length > 0);
+    });
+    send.addEventListener('click', submit);
+    c.append(ta, send);
+    const footer = el('div', { class: 'footer' });
+    footer.innerHTML = 'Powered by <b>Replyfinch</b>';
+    const end = el('button', { class: 'btn ghost' }, 'End chat');
+    end.addEventListener('click', () => this.conversation && this.socket?.emit('chat:end', { conversationId: this.conversation.id }));
+    footer.append(end);
+    this.composer.append(c, footer);
+  }
+
+  private renderEnded() {
+    const c = el('div', { class: 'composer' });
+    const again = el('button', { class: 'btn', style: 'width:100%' }, 'Start a new chat');
+    again.addEventListener('click', () => {
+      this.conversation = null;
+      this.messages = [];
+      this.render();
+    });
+    c.append(again);
+    this.composer.append(c);
+  }
+
+  private renderTyping() {
+    this.typingEl.textContent = this.agentTyping ? `${this.agentTyping} is typing…` : '';
+  }
+
+  private messageEl(m: Message, pending = false) {
+    if (m.authorType === 'system') return el('div', { class: 'system' }, escapeHtml(m.body));
+    const d = el('div', { class: `msg ${m.authorType}${pending ? ' pending' : ''}` });
+    if (m.authorType !== 'visitor') d.append(el('div', { class: 'meta' }, escapeHtml(m.authorName)));
+    const b = el('div', { class: 'bubble' });
+    b.textContent = m.body;
+    d.append(b);
+    return d;
+  }
+
+  private addMessage(m: Message) {
+    if (this.messages.some((x) => x.id === m.id)) return;
+    if (m.clientId) this.pending.delete(m.clientId);
+    this.messages.push(m);
+    this.render();
+  }
+
+  private async send(body: string) {
+    if (!this.socket || !this.conversation) return;
+    const clientId = cid();
+    const optimistic: Message = {
+      id: `tmp_${clientId}`,
+      conversationId: this.conversation.id,
+      authorType: 'visitor',
+      authorId: null,
+      authorName: this.visitorName ?? 'You',
+      body,
+      internal: false,
+      clientId,
+      createdAt: Date.now(),
+    };
+    this.pending.set(clientId, optimistic);
+    this.render();
+    // Retries reuse the clientId, so the server stores the message once.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const res = await this.socket
+        .timeout(8000)
+        .emitWithAck('message:send', { conversationId: this.conversation.id, body, clientId })
+        .catch(() => null);
+      if (res?.ok) return this.addMessage(res.data);
+      if (res && !res.ok) break;
+    }
+    this.pending.delete(clientId);
+    this.render();
+    this.body.append(el('div', { class: 'system' }, 'Message not sent — please try again.'));
+  }
+
+  private setTyping(on: boolean) {
+    if (!this.socket || !this.conversation) return;
+    window.clearTimeout(this.typingTimer);
+    if (on) this.typingTimer = window.setTimeout(() => this.setTyping(false), 4000);
+    if (on === this.isTyping) return;
+    this.isTyping = on;
+    this.socket.emit('typing', { conversationId: this.conversation.id, isTyping: on });
+  }
+
+  private scrollDown() {
+    requestAnimationFrame(() => (this.body.scrollTop = this.body.scrollHeight));
+  }
+}
+
+function escapeHtml(s: string) {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+}
+
+function boot() {
+  const script =
+    (document.currentScript as HTMLScriptElement | null) ??
+    document.querySelector<HTMLScriptElement>('script[data-account]');
+  const accountId = script?.dataset.account;
+  if (!accountId) return console.warn('Replyfinch: missing data-account on the widget script tag');
+  const api = (script?.dataset.api ?? import.meta.env.VITE_API_URL ?? 'http://localhost:4000').replace(/\/$/, '');
+  const w = new ReplyfinchWidget(accountId, api);
+  const go = () => w.start().catch((e) => console.error(e));
+  if (document.body) go();
+  else document.addEventListener('DOMContentLoaded', go);
+}
+
+boot();

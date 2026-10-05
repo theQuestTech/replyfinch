@@ -28,7 +28,8 @@ export interface VisitorClientEvents {
 }
 
 export interface VisitorServerEvents {
-  'chat:resume': (p: { conversation: Conversation; messages: Message[] }) => void;
+  /** An open chat to show (on reconnect, from another tab, or started by an agent). */
+  'chat:resume': (p: { conversation: Conversation; messages: Message[]; proactive?: boolean }) => void;
   'message:new': (m: Message) => void;
   typing: (p: TypingPayload) => void;
   'chat:ended': (p: { conversationId: string }) => void;
@@ -43,6 +44,11 @@ export interface AgentClientEvents {
   'message:send': (
     p: { conversationId: string; body: string; clientId: string; internal?: boolean },
     ack: Ack<Message>,
+  ) => void;
+  /** Proactively start a chat with a visitor who is only browsing. */
+  'chat:initiate': (
+    p: { visitorId: string; body: string; clientId: string },
+    ack: Ack<{ conversation: Conversation; messages: Message[] }>,
   ) => void;
   typing: (p: { conversationId: string; isTyping: boolean }) => void;
   'chat:end': (p: { conversationId: string }) => void;

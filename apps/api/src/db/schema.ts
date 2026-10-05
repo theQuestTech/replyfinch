@@ -1,0 +1,106 @@
+import { sql } from 'drizzle-orm';
+import { boolean, index, integer, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+
+// Every tenant-owned table carries account_id so customers can later be split
+// across database clusters ("cells") without a rewrite.
+
+const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
+
+export const accounts = pgTable('accounts', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  createdAt: createdAt(),
+});
+
+export const users = pgTable(
+  'users',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull().references(() => accounts.id),
+    email: text('email').notNull(),
+    name: text('name').notNull(),
+    passwordHash: text('password_hash').notNull(),
+    role: text('role', { enum: ['admin', 'agent'] }).notNull().default('agent'),
+    maxChats: integer('max_chats').notNull().default(4),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('users_email_idx').on(t.email), index('users_account_idx').on(t.accountId)],
+);
+
+export const visitors = pgTable(
+  'visitors',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull().references(() => accounts.id),
+    name: text('name'),
+    email: text('email'),
+    phone: text('phone'),
+    notes: text('notes'),
+    tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
+    visits: integer('visits').notNull().default(1),
+    country: text('country'),
+    timezone: text('timezone'),
+    browser: text('browser'),
+    os: text('os'),
+    device: text('device'),
+    firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('visitors_account_idx').on(t.accountId)],
+);
+
+export const pageViews = pgTable(
+  'page_views',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull(),
+    visitorId: text('visitor_id').notNull().references(() => visitors.id),
+    url: text('url').notNull(),
+    title: text('title').notNull(),
+    referrer: text('referrer'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('page_views_visitor_idx').on(t.visitorId, t.createdAt)],
+);
+
+export const conversations = pgTable(
+  'conversations',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull().references(() => accounts.id),
+    visitorId: text('visitor_id').notNull().references(() => visitors.id),
+    status: text('status', { enum: ['waiting', 'active', 'ended'] }).notNull().default('waiting'),
+    assigneeId: text('assignee_id').references(() => users.id),
+    participantIds: text('participant_ids').array().notNull().default(sql`'{}'::text[]`),
+    department: text('department'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    firstReplyAt: timestamp('first_reply_at', { withTimezone: true }),
+    endedAt: timestamp('ended_at', { withTimezone: true }),
+    lastMessageAt: timestamp('last_message_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('conversations_account_status_idx').on(t.accountId, t.status),
+    index('conversations_visitor_idx').on(t.visitorId),
+  ],
+);
+
+export const messages = pgTable(
+  'messages',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull(),
+    conversationId: text('conversation_id').notNull().references(() => conversations.id),
+    authorType: text('author_type', { enum: ['visitor', 'agent', 'bot', 'system'] }).notNull(),
+    authorId: text('author_id'),
+    authorName: text('author_name').notNull(),
+    body: text('body').notNull(),
+    internal: boolean('internal').notNull().default(false),
+    clientId: text('client_id'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('messages_conversation_idx').on(t.conversationId, t.createdAt),
+    // Retries of the same send (same clientId) are de-duplicated.
+    uniqueIndex('messages_client_id_idx').on(t.conversationId, t.clientId),
+  ],
+);

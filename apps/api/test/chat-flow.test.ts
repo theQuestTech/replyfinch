@@ -218,6 +218,25 @@ describe('visitor → chat → agent joins by typing', () => {
     await removed;
   });
 
+  it('ends an open chat when the visitor leaves the website', async () => {
+    const { token } = await login();
+    const agent = agentSocket(token);
+    await waitFor(agent, 'visitors:snapshot');
+    const v = await newVisitor();
+    const visitor = visitorSocket(v.visitorToken);
+    await waitFor(visitor, 'connect');
+    const started = await emitAck<{ conversation: Conversation }>(visitor, 'chat:start', {
+      name: 'Hannah Lee',
+      message: 'Refund please',
+      clientId: 'h1',
+    });
+    const ended = waitFor<Conversation>(agent, 'conversation:update', (c) => c.id === started.conversation.id && c.status === 'ended');
+    const note = waitFor<Message>(agent, 'message:new', (m) => m.body === 'Hannah Lee left the website');
+    visitor.disconnect();
+    await ended;
+    await note;
+  });
+
   it('lets an agent start a chat with a browsing visitor', async () => {
     const { token } = await login();
     const agent = agentSocket(token);

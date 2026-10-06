@@ -243,7 +243,7 @@ export function createConversationService(db: Db) {
       return { messages: out, conversation: current, joined };
     },
 
-    async end(conv: ConvRow, by: { name: string; id: string | null }) {
+    async end(conv: ConvRow, by: { name: string; id: string | null }, note = `Chat ended by ${by.name}`) {
       const [updated] = await db
         .update(conversations)
         .set({ status: 'ended', endedAt: new Date() })
@@ -253,7 +253,7 @@ export function createConversationService(db: Db) {
         authorType: 'system',
         authorId: by.id,
         authorName: by.name,
-        body: `Chat ended by ${by.name}`,
+        body: note,
       });
       return { conversation: updated!, message: messageDto(sys.message) };
     },

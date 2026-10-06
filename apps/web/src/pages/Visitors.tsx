@@ -85,7 +85,7 @@ export function Visitors() {
           <span className="flex-1">Viewing</span>
           <span className="w-[120px]">Referrer</span>
           <span className="w-12 text-center">Visits</span>
-          <span className="w-[104px]" />
+          <span className="w-[124px]" />
         </div>
         {list.length === 0 && (
           <div className="py-16 text-center text-sm text-ink-2">
@@ -164,8 +164,9 @@ function Row({ v, selected, onOpen }: { v: DeskVisitor; selected: boolean; onOpe
         {referrerHost(v.referrer)}
       </span>
       <span className="w-12 text-center text-[13px] font-medium">{v.visits}</span>
-      <span className="flex w-[104px] justify-end">
+      <span className="flex w-[124px] justify-end">
         <Button
+          className="whitespace-nowrap"
           variant={v.state === 'chatting' ? (waiting ? 'primary' : 'success') : selected ? 'primary' : 'secondary'}
           onClick={(e) => {
             e.stopPropagation();

@@ -314,7 +314,7 @@ class ReplyfinchWidget {
     send.addEventListener('click', submit);
     c.append(ta, send);
     const footer = el('div', { class: 'footer' });
-    footer.innerHTML = 'Powered by <b>Replyfinch</b>';
+    footer.innerHTML = '<span>Powered by <b>Replyfinch</b></span>';
     const end = el('button', { class: 'btn ghost' }, 'End chat');
     end.addEventListener('click', () => this.conversation && this.socket?.emit('chat:end', { conversationId: this.conversation.id }));
     footer.append(end);

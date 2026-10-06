@@ -9,6 +9,7 @@ apps/
   widget/   Embeddable website chat widget (single widget.js, ~18 KB gzip)    → Vercel
 packages/
   shared/   Types, socket event contracts and validation shared by all apps
+e2e/        Playwright browser tests (Home queue, Visitors, chat windows, widget)
 docs/
   PLAN.md   Product plan, phases and scaling decisions
 ```
@@ -35,6 +36,13 @@ pnpm dev                      # api :4000 · agent app :5173 · demo store + wid
 pnpm typecheck
 pnpm --filter @replyfinch/api test   # needs Postgres + Redis running (uses replyfinch_test DB and Redis db 15)
 pnpm build
+```
+
+Browser tests (agent app + widget, real API):
+
+```bash
+pnpm --filter @replyfinch/e2e exec playwright install chromium   # once
+pnpm --filter @replyfinch/e2e test:e2e                           # starts the dev servers if not running
 ```
 
 Create the test database once: `docker compose exec postgres createdb -U replyfinch replyfinch_test`.

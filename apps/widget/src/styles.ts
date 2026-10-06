@@ -8,6 +8,7 @@ export const styles = `
 .launcher { width: 56px; height: 56px; border-radius: 28px; border: 0; cursor: pointer; background: var(--navy);
   display: grid; place-items: center; box-shadow: 0 8px 24px rgba(20,33,61,.28); position: relative; transition: transform .15s; }
 .launcher:hover { transform: translateY(-2px); }
+.badge[hidden] { display: none; }
 .launcher svg { width: 26px; height: 26px; }
 .badge { position: absolute; top: -2px; right: -2px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px;
   background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; border: 2px solid #fff; }

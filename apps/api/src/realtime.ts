@@ -124,8 +124,18 @@ export function createRealtime(d: Deps) {
   }
 
   async function removeVisitor(acc: string, vid: string) {
+    const record = await d.presence.getVisitor(acc, vid);
     await d.presence.removeVisitor(acc, vid);
     toAgents(acc).emit('visitor:remove', { id: vid });
+    // Like Zendesk: a chat ends when the visitor leaves the website.
+    const open = await d.conversations.openForVisitor(vid);
+    if (open) {
+      const name = record?.name ?? 'The visitor';
+      const ended = await d.conversations.end(open, { name, id: vid }, `${name} left the website`);
+      toAgents(acc).emit('message:new', ended.message);
+      toAgents(acc).emit('conversation:update', await d.conversations.dto(ended.conversation));
+      await broadcastTeam(acc);
+    }
   }
 
   async function setupVisitor(socket: VisitorSocket, vid: string, acc: string) {
@@ -428,6 +438,17 @@ export function createRealtime(d: Deps) {
   // instance never saw their disconnect) and announces browsing → idle changes.
   async function sweep(now = Date.now()) {
     for (const acc of await d.presence.liveAccounts()) {
+      // Chats whose visitor is gone (e.g. an API instance died before seeing the disconnect).
+      const online = new Set((await d.presence.listVisitors(acc)).map((r) => r.id));
+      for (const c of await d.conversations.listOpen(acc)) {
+        if (online.has(c.visitorId) || now - c.lastMessageAt < OFFLINE_AFTER_MS) continue;
+        const conv = await d.conversations.get(acc, c.id);
+        if (!conv) continue;
+        const name = c.visitorName ?? 'The visitor';
+        const ended = await d.conversations.end(conv, { name, id: c.visitorId }, `${name} left the website`);
+        toAgents(acc).emit('message:new', ended.message);
+        toAgents(acc).emit('conversation:update', await d.conversations.dto(ended.conversation));
+      }
       for (const r of await d.presence.listVisitors(acc)) {
         if (now - r.lastSeenAt > OFFLINE_AFTER_MS) {
           await removeVisitor(acc, r.id);

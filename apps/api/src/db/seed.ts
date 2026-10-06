@@ -3,11 +3,13 @@ import path from 'node:path';
 import { eq } from 'drizzle-orm';
 import { hashPassword } from '../auth';
 import { env } from '../env';
+import { newId } from '../ids';
 import { createDb } from './client';
 import { accounts, users } from './schema';
 
-// Creates a demo account and two agents for local development.
-// Fixed account id so the widget snippet in README works out of the box.
+// Development: creates a demo account ("Acme Books") with two agents.
+// Production: never creates demo users. Instead, when ADMIN_EMAIL and
+// ADMIN_PASSWORD are set, it creates the first account + admin once.
 export const DEMO_ACCOUNT_ID = 'acc_demo';
 export const DEMO_AGENTS = [
   { id: 'usr_demo_maya', name: 'Maya Chen', email: 'maya@replyfinch.dev', role: 'admin' as const },
@@ -32,11 +34,60 @@ export async function seed(url = env.DATABASE_URL) {
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  seed()
-    .then(() => console.log(`seeded: log in as ${DEMO_AGENTS[0]!.email} / ${DEMO_PASSWORD}`))
-    .catch((e) => {
-      console.error(e);
-      process.exit(1);
+/** Create the first account and admin from env vars, if no user with that email exists. */
+export async function bootstrapAdmin(
+  input: { email: string; password: string; name: string; accountName: string },
+  url = env.DATABASE_URL,
+): Promise<{ created: boolean; accountId: string }> {
+  const { db, sql } = createDb(url);
+  try {
+    const email = input.email.toLowerCase();
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    if (user) return { created: false, accountId: user.accountId };
+    if (input.password.length < 10) throw new Error('ADMIN_PASSWORD must be at least 10 characters');
+    const accountId = newId.account();
+    await db.insert(accounts).values({ id: accountId, name: input.accountName });
+    await db.insert(users).values({
+      id: newId.user(),
+      accountId,
+      email,
+      name: input.name,
+      role: 'admin',
+      passwordHash: await hashPassword(input.password),
     });
+    return { created: true, accountId };
+  } finally {
+    await sql.end();
+  }
+}
+
+async function main() {
+  if (env.NODE_ENV !== 'production') {
+    await seed();
+    console.log(`seeded demo account: log in as ${DEMO_AGENTS[0]!.email} / ${DEMO_PASSWORD}`);
+    return;
+  }
+  const { ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_NAME, ACCOUNT_NAME } = process.env;
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+    console.log('ADMIN_EMAIL / ADMIN_PASSWORD not set — skipping admin bootstrap');
+    return;
+  }
+  const res = await bootstrapAdmin({
+    email: ADMIN_EMAIL,
+    password: ADMIN_PASSWORD,
+    name: ADMIN_NAME ?? 'Admin',
+    accountName: ACCOUNT_NAME ?? 'My company',
+  });
+  console.log(
+    res.created
+      ? `created admin ${ADMIN_EMAIL} — widget account id: ${res.accountId}`
+      : `admin ${ADMIN_EMAIL} already exists — widget account id: ${res.accountId}`,
+  );
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  main().catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
 }

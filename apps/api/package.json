@@ -11,7 +11,8 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file-if-exists=../../.env src/db/migrate.ts",
-    "db:seed": "tsx --env-file-if-exists=../../.env src/db/seed.ts"
+    "db:seed": "tsx --env-file-if-exists=../../.env src/db/seed.ts",
+    "release": "node dist/db/migrate.js && node dist/db/seed.js"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
@@ -36,5 +37,9 @@
     "tsx": "^4.23.15",
     "typescript": "~5.9.3",
     "vitest": "^3.2.7"
-  }
+  },
+  "files": [
+    "dist",
+    "drizzle"
+  ]
 }

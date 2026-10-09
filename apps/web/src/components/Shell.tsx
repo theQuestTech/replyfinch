@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Bell,
   BookOpen,
@@ -12,6 +12,8 @@ import {
   House,
   Inbox,
   LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
   SlidersHorizontal,
@@ -37,49 +39,105 @@ const NAV = [
   { to: '/help-center', label: 'Help center', icon: BookOpen },
 ];
 
+const SIDEBAR_KEY = 'rf_sidebar_expanded';
+const SHORTCUT = /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘B' : 'Ctrl B';
+
+function useSidebar() {
+  const [expanded, setExpanded] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_KEY) !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const toggle = () =>
+    setExpanded((e) => {
+      try {
+        localStorage.setItem(SIDEBAR_KEY, e ? '0' : '1');
+      } catch {
+        /* ignore */
+      }
+      return !e;
+    });
+  // ⌘B / Ctrl+B toggles the sidebar.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        toggle();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+  return { expanded, toggle };
+}
+
 export function Shell() {
   useRealtime();
   const active = useDesk((s) => s.active);
   const waiting = useDesk((s) => Object.values(s.conversations).filter((c) => c.status === 'waiting').length);
+  const { expanded, toggle } = useSidebar();
+
+  const item = (isActive: boolean) =>
+    clsx(
+      'relative flex h-11 shrink-0 items-center rounded-[10px] transition-colors',
+      expanded ? 'w-full gap-3 px-3' : 'w-11 justify-center',
+      isActive ? 'bg-navy-2 text-white' : 'text-on-navy hover:bg-navy-2/60 hover:text-white',
+    );
 
   return (
     <div className="flex h-full min-w-[1000px]">
-      <aside className="flex w-[72px] shrink-0 flex-col items-center gap-1.5 bg-navy py-4">
-        <div className="mb-3.5 grid size-11 place-items-center rounded-xl bg-gold" aria-label="Replyfinch">
-          <Bird className="size-6 text-navy" strokeWidth={2} />
+      <aside
+        data-testid="sidebar"
+        data-expanded={expanded}
+        className={clsx(
+          'flex shrink-0 flex-col gap-1.5 overflow-hidden bg-navy py-4 transition-[width] duration-200',
+          expanded ? 'w-[232px] items-stretch px-3' : 'w-[72px] items-center px-0',
+        )}
+      >
+        <div className={clsx('mb-3.5 flex items-center gap-3', expanded && 'px-0.5')}>
+          <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-gold" aria-label="Replyfinch">
+            <Bird className="size-6 text-navy" strokeWidth={2} />
+          </div>
+          {expanded && <span className="text-[17px] font-bold tracking-tight text-white">Replyfinch</span>}
         </div>
         {NAV.map(({ to, label, icon: Icon, end, badge }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            title={label}
-            aria-label={label}
-            className={({ isActive }) =>
-              clsx(
-                'relative grid size-11 place-items-center rounded-[10px] transition',
-                isActive ? 'bg-navy-2 text-white' : 'text-on-navy hover:bg-navy-2/60 hover:text-white',
-              )
-            }
-          >
-            <Icon className="size-5" />
+          <NavLink key={to} to={to} end={end} title={expanded ? undefined : label} aria-label={label} className={({ isActive }) => item(isActive)}>
+            <Icon className="size-5 shrink-0" />
+            {expanded && <span className="truncate text-sm font-medium">{label}</span>}
             {badge && waiting > 0 && (
-              <span className="absolute top-1 right-0.5 rounded-full bg-danger px-1.5 text-[10px] leading-4 font-bold text-white">
+              <span
+                className={clsx(
+                  'rounded-full bg-danger px-1.5 text-[10px] leading-4 font-bold text-white',
+                  expanded ? 'ml-auto' : 'absolute top-1 right-0.5',
+                )}
+              >
                 {waiting}
               </span>
             )}
           </NavLink>
         ))}
         <div className="flex-1" />
-        <NavLink
-          to="/settings"
-          title="Settings"
-          aria-label="Settings"
-          className="grid size-11 place-items-center rounded-[10px] text-on-navy hover:bg-navy-2/60 hover:text-white"
-        >
-          <SlidersHorizontal className="size-5" />
+        <NavLink to="/settings" title={expanded ? undefined : 'Settings'} aria-label="Settings" className={({ isActive }) => item(isActive)}>
+          <SlidersHorizontal className="size-5 shrink-0" />
+          {expanded && <span className="text-sm font-medium">Settings</span>}
         </NavLink>
-        <MeMenu />
+        <button
+          onClick={toggle}
+          aria-label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
+          title={`${expanded ? 'Collapse' : 'Expand'} sidebar (${SHORTCUT})`}
+          className={clsx(item(false), 'cursor-pointer')}
+        >
+          {expanded ? <PanelLeftClose className="size-5 shrink-0" /> : <PanelLeftOpen className="size-5 shrink-0" />}
+          {expanded && (
+            <>
+              <span className="text-sm font-medium">Collapse</span>
+              <span className="ml-auto rounded border border-white/15 px-1.5 text-[10px] font-semibold text-on-navy">{SHORTCUT}</span>
+            </>
+          )}
+        </button>
+        <MeMenu expanded={expanded} />
       </aside>
 
       <div className="relative flex min-w-0 flex-1 flex-col">
@@ -98,19 +156,32 @@ export function Shell() {
   );
 }
 
-function MeMenu() {
+function MeMenu({ expanded }: { expanded: boolean }) {
   const agent = useAuth((s) => s.agent);
   const logout = useAuth((s) => s.logout);
   const me = useDesk((s) => s.team.find((t) => t.id === agent?.id));
   const [open, setOpen] = useState(false);
+  const status = me?.status ?? 'online';
   return (
-    <div className="relative">
-      <button onClick={() => setOpen((o) => !o)} className="relative cursor-pointer" aria-label="Account menu">
-        <Avatar text={initials(agent?.name)} tone="gold" size={36} />
-        <StatusDot status={me?.status ?? 'online'} ring="ring-navy" className="absolute -right-0.5 -bottom-0.5" />
+    <div className="relative mt-1.5">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className={clsx('flex cursor-pointer items-center gap-3 rounded-[10px] text-left', expanded && 'w-full p-1.5 hover:bg-navy-2/60')}
+        aria-label="Account menu"
+      >
+        <span className="relative shrink-0">
+          <Avatar text={initials(agent?.name)} tone="gold" size={36} />
+          <StatusDot status={status} ring="ring-navy" className="absolute -right-0.5 -bottom-0.5" />
+        </span>
+        {expanded && (
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold text-white">{agent?.name}</span>
+            <span className="block truncate text-xs text-on-navy capitalize">{status}</span>
+          </span>
+        )}
       </button>
       {open && (
-        <div className="absolute bottom-0 left-12 z-50 w-56 rounded-xl border border-line bg-surface p-1.5 shadow-xl">
+        <div className={clsx('absolute bottom-0 z-50 w-56 rounded-xl border border-line bg-surface p-1.5 shadow-xl', expanded ? 'left-[216px]' : 'left-12')}>
           <div className="px-3 py-2">
             <div className="text-sm font-semibold">{agent?.name}</div>
             <div className="text-xs text-ink-2">{agent?.email}</div>

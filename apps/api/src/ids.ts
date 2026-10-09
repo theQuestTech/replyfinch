@@ -9,4 +9,5 @@ export const newId = {
   conversation: () => `cnv_${ulid()}`,
   message: () => `msg_${ulid()}`,
   pageView: () => `pv_${ulid()}`,
+  shortcut: () => `sc_${ulid()}`,
 };

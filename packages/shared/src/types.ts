@@ -103,3 +103,12 @@ export interface WidgetConfig {
   departments: string[];
   agentsOnline: number;
 }
+
+/** A saved reply. Agents insert it in the composer with "/name". */
+export interface Shortcut {
+  id: string;
+  name: string;
+  message: string;
+  tags: string[];
+  updatedAt: number;
+}

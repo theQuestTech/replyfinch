@@ -9,6 +9,10 @@ import { Shell } from './components/Shell';
 import { Home } from './pages/Home';
 import { Login } from './pages/Login';
 import { Visitors } from './pages/Visitors';
+import { SettingsLayout } from './pages/settings/SettingsLayout';
+import { Profile } from './pages/settings/Profile';
+import { Team } from './pages/settings/Team';
+import { Shortcuts } from './pages/settings/Shortcuts';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 10_000, retry: 1 } } });
 
@@ -46,6 +50,12 @@ createRoot(document.getElementById('root')!).render(
           >
             <Route index element={<Home />} />
             <Route path="visitors" element={<Visitors />} />
+            <Route path="settings" element={<SettingsLayout />}>
+              <Route index element={<Navigate to="profile" replace />} />
+              <Route path="profile" element={<Profile />} />
+              <Route path="team" element={<Team />} />
+              <Route path="shortcuts" element={<Shortcuts />} />
+            </Route>
             <Route path="*" element={<ComingSoon />} />
           </Route>
         </Routes>

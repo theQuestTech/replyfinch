@@ -18,7 +18,10 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import type { Conversation, Message } from '@replyfinch/shared';
+import type { Conversation, Message, Shortcut } from '@replyfinch/shared';
+import { Link } from 'react-router-dom';
+import { fillShortcut, inlineSuggestion, searchShortcuts, slashQuery } from '../../lib/shortcuts';
+import { useShortcuts } from '../../pages/settings/Shortcuts';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { clientId, clock, duration, initials, visitorLabel } from '../../lib/format';
@@ -89,7 +92,7 @@ export function ChatWindow({ visitorId, mode }: { visitorId: string; mode: ChatM
 
   return (
     <div
-      className={clsx('flex min-h-0 flex-1 flex-col', mode === 'main' && 'h-full gap-3 px-8 pt-4 pb-6')}
+      className={clsx('flex min-h-0 min-w-0 flex-1 flex-col', mode === 'main' && 'h-full gap-3 px-8 pt-4 pb-6')}
       data-testid={`chat-window-${mode}`}
     >
       {mode === 'main' && <OpenChatsStrip activeId={visitorId} />}
@@ -168,6 +171,7 @@ export function ChatWindow({ visitorId, mode }: { visitorId: string; mode: ChatM
               <CurrentChat
                 visitorId={visitor.id}
                 visitorName={name}
+                visitorRealName={visitor.name}
                 visitorLeft={!!visitor.left}
                 conversation={conversation}
                 messages={messages ?? []}
@@ -234,6 +238,7 @@ function HeaderStatus({ conversation, joined, meId, left }: { conversation?: Con
 function CurrentChat({
   visitorId,
   visitorName,
+  visitorRealName,
   visitorLeft,
   conversation,
   messages,
@@ -244,6 +249,7 @@ function CurrentChat({
 }: {
   visitorId: string;
   visitorName: string;
+  visitorRealName: string | null;
   visitorLeft: boolean;
   conversation?: Conversation;
   messages: Message[];
@@ -315,6 +321,7 @@ function CurrentChat({
                 : 'Start typing to start a chat with this visitor.'
           }
           visitorName={visitorName}
+          visitorRealName={visitorRealName}
           conversationId={open ? conversation.id : null}
           onSend={send}
         />
@@ -328,6 +335,7 @@ function Composer({
   canInternal,
   viewingLabel,
   visitorName,
+  visitorRealName,
   conversationId,
   onSend,
 }: {
@@ -335,6 +343,7 @@ function Composer({
   canInternal: boolean;
   viewingLabel: string;
   visitorName: string;
+  visitorRealName: string | null;
   conversationId: string | null;
   onSend: (body: string, internal: boolean) => void;
 }) {
@@ -343,6 +352,45 @@ function Composer({
   const [internal, setInternal] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const typingRef = useRef<{ on: boolean; timer?: number }>({ on: false });
+  const agentName = useAuth((s) => s.agent?.name ?? '');
+
+  // ---- shortcuts: "/" picker + suggestions while typing ----
+  const { data: shortcuts = [] } = useShortcuts();
+  const [caret, setCaret] = useState(0);
+  const [highlight, setHighlight] = useState(0);
+  const [dismissed, setDismissed] = useState<string | null>(null); // text at which Esc closed the menu
+  const pendingCaret = useRef<number | null>(null);
+  const slash = slashQuery(text, caret);
+  const pickerOpen = !!slash && dismissed !== text;
+  const results = pickerOpen ? searchShortcuts(shortcuts, slash.query).slice(0, 8) : [];
+  const inline = !slash && dismissed !== text ? inlineSuggestion(shortcuts, text, caret) : null;
+
+  useEffect(() => setHighlight(0), [slash?.query]);
+  useEffect(() => {
+    if (pendingCaret.current !== null && ref.current) {
+      ref.current.setSelectionRange(pendingCaret.current, pendingCaret.current);
+      setCaret(pendingCaret.current);
+      pendingCaret.current = null;
+    }
+  }, [text]);
+
+  const insertShortcut = (sc: Shortcut, start: number) => {
+    const filled = fillShortcut(sc.message, { visitorName: visitorRealName, agentName });
+    const next = text.slice(0, start) + filled + text.slice(caret);
+    pendingCaret.current = start + filled.length;
+    setText(next);
+    emitTyping(true);
+    ref.current?.focus();
+  };
+  const openPicker = () => {
+    const at = ref.current?.selectionStart ?? text.length;
+    const needsSpace = at > 0 && !/\s$/.test(text.slice(0, at));
+    const next = `${text.slice(0, at)}${needsSpace ? ' ' : ''}/${text.slice(at)}`;
+    pendingCaret.current = at + (needsSpace ? 2 : 1);
+    setText(next);
+    setDismissed(null);
+    ref.current?.focus();
+  };
 
   useEffect(() => {
     if (joined) setComposing(true);
@@ -417,7 +465,31 @@ function Composer({
   }
 
   return (
-    <div className="border-t border-line bg-surface px-4 pt-3 pb-3.5">
+    <div className="relative border-t border-line bg-surface px-4 pt-3 pb-3.5">
+      {pickerOpen && slash && (
+        <ShortcutPicker
+          query={slash.query}
+          results={results}
+          highlight={highlight}
+          onHover={setHighlight}
+          onPick={(sc) => insertShortcut(sc, slash.start)}
+          preview={(sc) => fillShortcut(sc.message, { visitorName: visitorRealName, agentName })}
+        />
+      )}
+      {inline && (
+        <div className="mb-2 flex items-center gap-2 rounded-lg bg-primary-subtle px-3 py-1.5 text-xs" data-testid="shortcut-suggestion">
+          <Zap className="size-3.5 shrink-0 text-primary" />
+          <span className="shrink-0 font-semibold text-primary">/{inline.shortcut.name}</span>
+          <span className="min-w-0 flex-1 truncate text-ink-2">{fillShortcut(inline.shortcut.message, { visitorName: visitorRealName, agentName })}</span>
+          <button
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => insertShortcut(inline.shortcut, inline.start)}
+            className="shrink-0 cursor-pointer rounded px-1.5 font-semibold text-primary hover:bg-surface"
+          >
+            Use <Kbd>Tab</Kbd>
+          </button>
+        </div>
+      )}
       <div
         className={clsx(
           'flex flex-col gap-2.5 rounded-[10px] border-[1.5px] pt-3 pr-2.5 pb-2.5 pl-3.5',
@@ -429,12 +501,44 @@ function Composer({
           value={text}
           rows={2}
           aria-label="Message"
-          placeholder={internal ? 'Write an internal note — only agents can see this' : `Reply to ${visitorName}…`}
+          placeholder={internal ? 'Write an internal note — only agents can see this' : `Reply to ${visitorName}… (type / for shortcuts)`}
           onChange={(e) => {
             setText(e.target.value);
+            setCaret(e.target.selectionStart);
             emitTyping(e.target.value.length > 0);
           }}
+          onSelect={(e) => setCaret(e.currentTarget.selectionStart)}
           onKeyDown={(e) => {
+            if (pickerOpen && slash) {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (results.length) setHighlight((h) => (h + (e.key === 'ArrowDown' ? 1 : results.length - 1)) % results.length);
+                return;
+              }
+              if ((e.key === 'Enter' || e.key === 'Tab') && results[highlight]) {
+                e.preventDefault();
+                insertShortcut(results[highlight]!, slash.start);
+                return;
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                setDismissed(text);
+                return;
+              }
+            } else if (inline) {
+              if (e.key === 'Tab') {
+                e.preventDefault();
+                insertShortcut(inline.shortcut, inline.start);
+                return;
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                setDismissed(text);
+                return;
+              }
+            }
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               submit();
@@ -454,17 +558,85 @@ function Composer({
               </button>
             );
           })}
-          <ToolbarButton icon={Zap} label="Shortcuts" disabled />
+          <ToolbarButton icon={Zap} label="Shortcuts" onClick={openPicker} />
           <ToolbarButton icon={Sparkles} label="AI suggest" disabled />
           {canInternal && (
             <ToolbarButton icon={Lock} label="Internal note" active={internal} onClick={() => setInternal((v) => !v)} />
           )}
           <div className="flex-1" />
-          <span className="text-[11px] text-ink-2">↵ to send</span>
           <Button variant="primary" onClick={submit} disabled={!text.trim()}>
             <Send className="size-3.5" /> {internal ? 'Add note' : 'Send'}
           </Button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ShortcutPicker({
+  query,
+  results,
+  highlight,
+  onHover,
+  onPick,
+  preview,
+}: {
+  query: string;
+  results: Shortcut[];
+  highlight: number;
+  onHover: (i: number) => void;
+  onPick: (s: Shortcut) => void;
+  preview: (s: Shortcut) => string;
+}) {
+  return (
+    <div
+      role="listbox"
+      aria-label="Shortcuts"
+      data-testid="shortcut-picker"
+      className="absolute right-4 bottom-full left-4 z-20 mb-1 overflow-hidden rounded-xl border border-line bg-surface shadow-xl"
+    >
+      <div className="flex items-center gap-2 border-b border-line px-3 py-2 text-[11px] font-semibold tracking-wide text-ink-2 uppercase">
+        <Zap className="size-3.5" /> Shortcuts {query && <span className="font-mono normal-case">· /{query}</span>}
+      </div>
+      {results.length === 0 ? (
+        <div className="px-3 py-4 text-sm text-ink-2">
+          No shortcuts match “{query}”.{' '}
+          <Link to="/settings/shortcuts" className="font-semibold text-primary">
+            Create one
+          </Link>
+        </div>
+      ) : (
+        <div className="max-h-72 overflow-y-auto py-1">
+          {results.map((s, i) => (
+            <button
+              key={s.id}
+              role="option"
+              aria-selected={i === highlight}
+              onMouseDown={(e) => e.preventDefault()}
+              onMouseEnter={() => onHover(i)}
+              onClick={() => onPick(s)}
+              className={clsx('flex w-full cursor-pointer items-baseline gap-3 px-3 py-2 text-left', i === highlight && 'bg-primary-subtle')}
+            >
+              <span className="w-32 shrink-0 truncate font-mono text-[13px] font-semibold text-primary">/{s.name}</span>
+              <span className="min-w-0 flex-1 truncate text-[13px] text-ink-2">{preview(s)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-3 border-t border-line bg-canvas px-3 py-1.5 text-[11px] text-ink-2">
+        <span>
+          <Kbd>↑</Kbd> <Kbd>↓</Kbd> choose
+        </span>
+        <span>
+          <Kbd>↵</Kbd> or <Kbd>Tab</Kbd> insert
+        </span>
+        <span>
+          <Kbd>Esc</Kbd> close
+        </span>
+        <span className="flex-1" />
+        <Link to="/settings/shortcuts" className="font-semibold text-primary hover:underline">
+          Manage shortcuts
+        </Link>
       </div>
     </div>
   );
@@ -489,7 +661,7 @@ function ToolbarButton({
       disabled={disabled}
       title={disabled ? `${label} (coming soon)` : label}
       className={clsx(
-        'flex items-center gap-1.5 rounded-md py-1 pr-2 pl-1.5 text-xs font-medium',
+        'flex items-center gap-1.5 rounded-md py-1 pr-2 pl-1.5 text-xs font-medium whitespace-nowrap',
         active ? 'bg-warning text-white' : 'text-ink-2 enabled:cursor-pointer enabled:hover:bg-muted',
       )}
     >

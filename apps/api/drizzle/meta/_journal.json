@@ -8,6 +8,20 @@
       "when": 1791237963305,
       "tag": "0000_even_longshot",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1791578591901,
+      "tag": "0001_busy_midnight",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791579278741,
+      "tag": "0002_default_shortcuts",
+      "breakpoints": true
     }
   ]
 }

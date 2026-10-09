@@ -48,3 +48,44 @@ export const chatInitiateSchema = z.object({
   body: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH),
   clientId: z.string().min(1).max(64),
 });
+
+export const MIN_PASSWORD_LENGTH = 10;
+const password = z.string().min(MIN_PASSWORD_LENGTH, `Use at least ${MIN_PASSWORD_LENGTH} characters`).max(200);
+
+export const profileUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+});
+
+export const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: password,
+});
+
+export const teamCreateSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  email: z.email().transform((e) => e.toLowerCase()),
+  role: z.enum(['admin', 'agent']).default('agent'),
+  maxChats: z.number().int().min(1).max(20).default(4),
+  password,
+});
+
+export const teamUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  role: z.enum(['admin', 'agent']).optional(),
+  maxChats: z.number().int().min(1).max(20).optional(),
+});
+
+export const passwordResetSchema = z.object({ password });
+
+/** Shortcut names are typed after "/", so keep them simple: lowercase, digits, - and _. */
+export const SHORTCUT_NAME_PATTERN = /^[a-z0-9][a-z0-9_-]{0,39}$/;
+
+export const shortcutSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .transform((s) => s.toLowerCase().replace(/^\//, '').replace(/\s+/g, '-'))
+    .pipe(z.string().regex(SHORTCUT_NAME_PATTERN, 'Use letters, numbers, - or _ (max 40)')),
+  message: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH),
+  tags: z.array(z.string().trim().toLowerCase().min(1).max(30)).max(10).default([]),
+});

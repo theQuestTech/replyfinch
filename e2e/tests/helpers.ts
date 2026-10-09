@@ -6,12 +6,12 @@ export const STORE_URL = 'http://localhost:5174';
 /** A short random suffix so each test's visitors are easy to find. */
 export const uid = () => Math.random().toString(36).slice(2, 7);
 
-export async function loginAgent(browser: Browser, email = 'maya@replyfinch.dev'): Promise<Page> {
+export async function loginAgent(browser: Browser, email = 'maya@replyfinch.dev', password = 'replyfinch'): Promise<Page> {
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
   await page.goto(`${AGENT_URL}/login`);
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill('replyfinch');
+  await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page.getByRole('heading', { name: /Good (morning|afternoon|evening)/ })).toBeVisible();
   return page;

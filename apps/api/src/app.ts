@@ -12,6 +12,8 @@ import { createRealtime } from './realtime';
 import { createConversationService } from './services/conversations';
 import { createStatsService } from './services/stats';
 import { createVisitorService } from './services/visitors';
+import { createShortcutService } from './services/shortcuts';
+import { settingsRoutes } from './routes/settings';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -28,6 +30,7 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
   const conversations = createConversationService(db);
   const visitors = createVisitorService(db);
   const stats = createStatsService(db, presence);
+  const shortcuts = createShortcutService(db);
 
   // Never send internal details (SQL, stack traces) to clients; log them instead.
   app.setErrorHandler((err: Error & { statusCode?: number }, req, reply) => {
@@ -43,7 +46,7 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
     delegator: (req, cb) => {
       const origin = req.headers.origin;
       const isWidget = req.url?.startsWith('/widget/');
-      cb(null, { origin: isWidget ? true : !origin || env.corsOrigins.includes(origin), methods: ['GET', 'POST', 'PATCH'] });
+      cb(null, { origin: isWidget ? true : !origin || env.corsOrigins.includes(origin), methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'] });
     },
   });
 
@@ -58,12 +61,19 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
     stats,
     corsOrigins: env.corsOrigins,
     leaveGraceMs: opts.leaveGraceMs,
+    isActiveAgent: (id: string) => isActiveAgent(id),
   });
+
+  // Removed agents lose access immediately, even with an unexpired token.
+  async function isActiveAgent(userId: string) {
+    const [u] = await db.select({ active: users.active }).from(users).where(eq(users.id, userId));
+    return !!u?.active;
+  }
 
   async function requireAgent(req: FastifyRequest, reply: FastifyReply) {
     const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
     const claims = auth.verifyAgent(token);
-    if (!claims) return reply.code(401).send({ error: 'unauthorized' });
+    if (!claims || !(await isActiveAgent(claims.sub))) return reply.code(401).send({ error: 'unauthorized' });
     req.agent = claims;
   }
 
@@ -74,7 +84,7 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
     const body = loginSchema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid_input' });
     const [u] = await db.select().from(users).where(eq(users.email, body.data.email.toLowerCase()));
-    if (!u || !(await checkPassword(body.data.password, u.passwordHash))) {
+    if (!u || !u.active || !(await checkPassword(body.data.password, u.passwordHash))) {
       return reply.code(401).send({ error: 'invalid_credentials' });
     }
     const agent: Agent = { id: u.id, accountId: u.accountId, name: u.name, email: u.email, role: u.role };
@@ -84,6 +94,7 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
   // ---------------- agent API ----------------
   app.register(async (r) => {
     r.addHook('preHandler', requireAgent);
+    await settingsRoutes(r, { db, realtime, shortcuts });
 
     r.get('/me', async (req) => {
       const [u] = await db.select().from(users).where(eq(users.id, req.agent.sub));

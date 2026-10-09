@@ -92,3 +92,54 @@ export function Card({ children, className }: { children: ReactNode; className?:
 export function SectionLabel({ children }: { children: ReactNode }) {
   return <div className="text-[11px] font-semibold tracking-wide text-ink-2 uppercase">{children}</div>;
 }
+
+export function Field({
+  label,
+  hint,
+  error,
+  children,
+}: {
+  label: string;
+  hint?: ReactNode;
+  error?: string | null;
+  children: ReactNode;
+}) {
+  // Hint and error sit outside <label> so the field's accessible name is just the label.
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="flex flex-col gap-1.5">
+        <span className="text-[13px] font-semibold text-ink">{label}</span>
+        {children}
+      </label>
+      {hint && !error && <span className="text-xs text-ink-2">{hint}</span>}
+      {error && (
+        <span role="alert" className="text-xs font-medium text-danger">
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
+export const inputClass =
+  'h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none placeholder:text-ink-2 focus:border-primary focus:ring-2 focus:ring-primary-subtle disabled:bg-muted';
+
+export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-navy/40 p-4"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+      onKeyDown={(e) => e.key === 'Escape' && onClose()}
+    >
+      <div role="dialog" aria-label={title} className="w-full max-w-lg rounded-2xl bg-surface shadow-2xl">
+        <div className="flex items-center border-b border-line px-6 py-4">
+          <h2 className="flex-1 text-base font-bold">{title}</h2>
+          <button onClick={onClose} aria-label="Close" className="cursor-pointer rounded-md px-2 text-xl leading-none text-ink-2 hover:bg-muted">
+            ×
+          </button>
+        </div>
+        <div className="px-6 py-5">{children}</div>
+      </div>
+    </div>
+  );
+}

@@ -20,6 +20,8 @@ import {
   Ticket,
   Users,
 } from 'lucide-react';
+import type { Agent } from '@replyfinch/shared';
+import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { setAgentStatus, useRealtime } from '../lib/realtime';
 import { useDesk } from '../lib/store';
@@ -75,6 +77,11 @@ function useSidebar() {
 
 export function Shell() {
   useRealtime();
+  // Keep name and role fresh (an admin may have changed them since this login).
+  const setAgent = useAuth((s) => s.setAgent);
+  useEffect(() => {
+    api<Agent>('/me').then(setAgent).catch(() => {});
+  }, [setAgent]);
   const active = useDesk((s) => s.active);
   const waiting = useDesk((s) => Object.values(s.conversations).filter((c) => c.status === 'waiting').length);
   const { expanded, toggle } = useSidebar();

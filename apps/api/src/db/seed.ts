@@ -4,6 +4,7 @@ import { env } from '../env';
 import { newId } from '../ids';
 import { createDb } from './client';
 import { accounts, users } from './schema';
+import { createShortcutService } from '../services/shortcuts';
 
 // Development: creates a demo account ("Acme Books") with two agents.
 // Production: never creates demo users. Instead, when ADMIN_EMAIL and
@@ -27,6 +28,7 @@ export async function seed(url = env.DATABASE_URL) {
         .values({ ...a, accountId: DEMO_ACCOUNT_ID, passwordHash })
         .onConflictDoNothing();
     }
+    await createShortcutService(db).addDefaults(DEMO_ACCOUNT_ID);
   } finally {
     await sql.end();
   }
@@ -53,6 +55,7 @@ export async function bootstrapAdmin(
       role: 'admin',
       passwordHash: await hashPassword(input.password),
     });
+    await createShortcutService(db).addDefaults(accountId);
     return { created: true, accountId };
   } finally {
     await sql.end();

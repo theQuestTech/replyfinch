@@ -8,6 +8,7 @@ interface AuthState {
   agent: Agent | null;
   login: (token: string, agent: Agent) => void;
   logout: () => void;
+  setAgent: (agent: Agent) => void;
 }
 
 function load(): Pick<AuthState, 'token' | 'agent'> {
@@ -29,6 +30,16 @@ export const useAuth = create<AuthState>((set) => ({
       /* ignore */
     }
     set({ token, agent });
+  },
+  setAgent: (agent) => {
+    set((s) => {
+      try {
+        localStorage.setItem(KEY, JSON.stringify({ token: s.token, agent }));
+      } catch {
+        /* ignore */
+      }
+      return { agent };
+    });
   },
   logout: () => {
     try {

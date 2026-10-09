@@ -13,7 +13,10 @@ function startOfTodayUtc() {
 export function createStatsService(db: Db, presence: Presence) {
   return {
     async team(accountId: string): Promise<TeamMember[]> {
-      const rows = await db.select().from(users).where(eq(users.accountId, accountId));
+      const rows = await db
+        .select()
+        .from(users)
+        .where(and(eq(users.accountId, accountId), eq(users.active, true)));
       const load = await db
         .select({ assigneeId: conversations.assigneeId, n: count() })
         .from(conversations)

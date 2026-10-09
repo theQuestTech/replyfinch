@@ -47,6 +47,7 @@ interface Deps {
   stats: StatsService;
   corsOrigins: string[];
   leaveGraceMs?: number;
+  isActiveAgent: (userId: string) => Promise<boolean>;
 }
 
 /**
@@ -322,13 +323,19 @@ export function createRealtime(d: Deps) {
   agentsNs.use((socket, next) => {
     const claims = d.auth.verifyAgent(socket.handshake.auth?.token);
     if (!claims) return next(new Error('unauthorized'));
-    socket.data.claims = claims;
-    next();
+    d.isActiveAgent(claims.sub)
+      .then((ok) => {
+        if (!ok) return next(new Error('unauthorized'));
+        socket.data.claims = claims;
+        next();
+      })
+      .catch(() => next(new Error('unauthorized')));
   });
 
   agentsNs.on('connection', (socket: AgentSocket) => {
     const { sub: uid, acc, name } = socket.data.claims;
     socket.join(`acc:${acc}`);
+    socket.join(`agent:${uid}`);
     const ready = setupAgent(socket, uid, acc).catch((err) => {
       console.error('[realtime] agent setup failed', err);
       socket.disconnect(true);
@@ -475,6 +482,12 @@ export function createRealtime(d: Deps) {
       await Promise.allSettled([...ctx.inflight]);
       pub.disconnect();
       sub.disconnect();
+    },
+    /** Re-broadcast the team list after profile or team changes. */
+    teamChanged: (acc: string) => broadcastTeam(acc),
+    /** Sign out a removed agent everywhere, immediately. */
+    async disconnectAgent(uid: string) {
+      agentsNs.in(`agent:${uid}`).disconnectSockets(true);
     },
     /** Push profile edits made over REST to everyone watching. */
     async visitorChanged(acc: string, vid: string, patch: Partial<VisitorRecord>) {

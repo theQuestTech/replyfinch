@@ -22,6 +22,8 @@ export const users = pgTable(
     passwordHash: text('password_hash').notNull(),
     role: text('role', { enum: ['admin', 'agent'] }).notNull().default('agent'),
     maxChats: integer('max_chats').notNull().default(4),
+    /** Removed agents are deactivated, not deleted, so their chat history keeps its author. */
+    active: boolean('active').notNull().default(true),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('users_email_idx').on(t.email), index('users_account_idx').on(t.accountId)],
@@ -103,4 +105,20 @@ export const messages = pgTable(
     // Retries of the same send (same clientId) are de-duplicated.
     uniqueIndex('messages_client_id_idx').on(t.conversationId, t.clientId),
   ],
+);
+
+/** Saved replies agents insert with "/" in the chat composer. */
+export const shortcuts = pgTable(
+  'shortcuts',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull().references(() => accounts.id),
+    name: text('name').notNull(),
+    message: text('message').notNull(),
+    tags: text('tags').array().notNull().default(sql`'{}'::text[]`),
+    createdBy: text('created_by').references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('shortcuts_account_name_idx').on(t.accountId, t.name)],
 );

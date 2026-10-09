@@ -29,6 +29,13 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
   const visitors = createVisitorService(db);
   const stats = createStatsService(db, presence);
 
+  // Never send internal details (SQL, stack traces) to clients; log them instead.
+  app.setErrorHandler((err: Error & { statusCode?: number }, req, reply) => {
+    const status = err.statusCode && err.statusCode < 600 ? err.statusCode : 500;
+    if (status >= 500) req.log.error(err);
+    reply.code(status).send({ error: status >= 500 ? 'internal_error' : err.message });
+  });
+
   // The widget is embedded on customers' websites, so /widget/* accepts any origin
   // (it is authenticated by account id + visitor token). Everything else is limited
   // to the agent app's origins.

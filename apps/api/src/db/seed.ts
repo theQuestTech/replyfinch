@@ -1,5 +1,3 @@
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
 import { eq } from 'drizzle-orm';
 import { hashPassword } from '../auth';
 import { env } from '../env';
@@ -61,15 +59,11 @@ export async function bootstrapAdmin(
   }
 }
 
-async function main() {
-  if (env.NODE_ENV !== 'production') {
-    await seed();
-    console.log(`seeded demo account: log in as ${DEMO_AGENTS[0]!.email} / ${DEMO_PASSWORD}`);
-    return;
-  }
+/** Production: create the first account + admin from ADMIN_* env vars (once). */
+export async function bootstrapFromEnv(log: (msg: string) => void = console.log) {
   const { ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_NAME, ACCOUNT_NAME } = process.env;
   if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
-    console.log('ADMIN_EMAIL / ADMIN_PASSWORD not set — skipping admin bootstrap');
+    log('ADMIN_EMAIL / ADMIN_PASSWORD not set — skipping admin bootstrap');
     return;
   }
   const res = await bootstrapAdmin({
@@ -78,16 +72,9 @@ async function main() {
     name: ADMIN_NAME ?? 'Admin',
     accountName: ACCOUNT_NAME ?? 'My company',
   });
-  console.log(
+  log(
     res.created
       ? `created admin ${ADMIN_EMAIL} — widget account id: ${res.accountId}`
       : `admin ${ADMIN_EMAIL} already exists — widget account id: ${res.accountId}`,
   );
-}
-
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  main().catch((e) => {
-    console.error(e);
-    process.exit(1);
-  });
 }

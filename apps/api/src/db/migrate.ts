@@ -1,26 +1,25 @@
-import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { env } from '../env';
 import { createDb } from './client';
 
-// src/db/migrate.ts and the bundled dist/db/migrate.js both sit two levels below apps/api.
-const migrationsFolder = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../drizzle');
+// The SQL migrations live in apps/api/drizzle. This module runs from src/db (dev),
+// dist/ (bundled server) or dist/cli (bundled CLI), so look in each likely place.
+function migrationsFolder() {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [path.resolve(here, '../drizzle'), path.resolve(here, '../../drizzle')];
+  const found = candidates.find((p) => existsSync(path.join(p, 'meta', '_journal.json')));
+  if (!found) throw new Error(`migrations folder not found (looked in ${candidates.join(', ')})`);
+  return found;
+}
 
 export async function runMigrations(url = env.DATABASE_URL) {
   const { db, sql } = createDb(url);
   try {
-    await migrate(db, { migrationsFolder });
+    await migrate(db, { migrationsFolder: migrationsFolder() });
   } finally {
     await sql.end();
   }
-}
-
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  runMigrations()
-    .then(() => console.log('migrations applied'))
-    .catch((e) => {
-      console.error(e);
-      process.exit(1);
-    });
 }

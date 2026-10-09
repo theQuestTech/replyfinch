@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import { NavLink, Outlet } from 'react-router-dom';
-import { MessageSquareText, UserRound, Users } from 'lucide-react';
+import { Code, MessageSquareText, UserRound, Users } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 
 export function SettingsLayout() {
@@ -9,6 +9,7 @@ export function SettingsLayout() {
     { to: '/settings/profile', label: 'My profile', icon: UserRound, show: true },
     { to: '/settings/team', label: 'Team', icon: Users, show: isAdmin },
     { to: '/settings/shortcuts', label: 'Shortcuts', icon: MessageSquareText, show: true },
+    { to: '/settings/widget', label: 'Install widget', icon: Code, show: true },
   ];
   return (
     <div className="flex min-h-full flex-col gap-6 px-8 py-7">

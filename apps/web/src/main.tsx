@@ -13,6 +13,7 @@ import { SettingsLayout } from './pages/settings/SettingsLayout';
 import { Profile } from './pages/settings/Profile';
 import { Team } from './pages/settings/Team';
 import { Shortcuts } from './pages/settings/Shortcuts';
+import { InstallWidget } from './pages/settings/InstallWidget';
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 10_000, retry: 1 } } });
 
@@ -55,6 +56,7 @@ createRoot(document.getElementById('root')!).render(
               <Route path="profile" element={<Profile />} />
               <Route path="team" element={<Team />} />
               <Route path="shortcuts" element={<Shortcuts />} />
+              <Route path="widget" element={<InstallWidget />} />
             </Route>
             <Route path="*" element={<ComingSoon />} />
           </Route>

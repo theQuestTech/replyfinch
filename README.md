@@ -86,7 +86,7 @@ Create the test database once: `docker compose exec postgres createdb -U replyfi
 3. Add this before `</body>` on any website:
 
 ```html
-<script src="https://widget.replyfinch.com/widget.js" data-account="acc_…" data-api="https://api.replyfinch.com" async></script>
+<script src="https://replyfinch.vercel.app/widget.js" data-account="acc_…" data-api="https://api.replyfinch.com" async></script>
 ```
 
 ## How the live chat works

@@ -17,6 +17,24 @@ if (parsed.NODE_ENV === 'production' && parsed.JWT_SECRET === 'dev-only-secret-c
 
 export const env = {
   ...parsed,
-  corsOrigins: parsed.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean),
+  corsOrigins: parseOrigins(parsed.CORS_ORIGINS),
 };
 export type Env = typeof env;
+
+/**
+ * Accepts forgiving input from a hosting dashboard: commas or spaces between entries,
+ * surrounding quotes, trailing slashes or paths ("https://app.example.com/login").
+ */
+export function parseOrigins(raw: string): string[] {
+  return raw
+    .split(/[\s,]+/)
+    .map((s) => s.trim().replace(/^['"]+|['"]+$/g, ''))
+    .filter(Boolean)
+    .map((s) => {
+      try {
+        return new URL(s.includes('://') ? s : `https://${s}`).origin;
+      } catch {
+        return s.replace(/\/+$/, '');
+      }
+    });
+}

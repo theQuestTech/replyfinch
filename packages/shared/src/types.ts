@@ -186,3 +186,41 @@ export interface HistoryPage {
   /** Pass back as ?cursor= to load older chats; null when there are no more. */
   nextCursor: string | null;
 }
+
+/** Numbers for one period on the Reports page. */
+export interface ReportSummary {
+  chats: number;
+  /** Chats visitors started (agents can also start chats). */
+  visitorChats: number;
+  /** Visitor chats that ended before any agent replied. */
+  missed: number;
+  avgFirstReplySeconds: number | null;
+  avgDurationSeconds: number | null;
+  good: number;
+  bad: number;
+  offlineMessages: number;
+}
+
+export interface Report {
+  days: number;
+  timezone: string;
+  /** First and last day of the period (YYYY-MM-DD, in `timezone`). */
+  from: string;
+  to: string;
+  current: ReportSummary;
+  /** The same number of days just before, for comparison. */
+  previous: ReportSummary;
+  byDay: { date: string; answered: number; missed: number }[];
+  /** Visitor chats by hour of day (0–23), in `timezone`. */
+  byHour: number[];
+  departments: { name: string; chats: number }[];
+  agents: {
+    id: string;
+    name: string;
+    chats: number;
+    avgFirstReplySeconds: number | null;
+    avgDurationSeconds: number | null;
+    good: number;
+    bad: number;
+  }[];
+}

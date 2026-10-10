@@ -99,4 +99,5 @@ Create the test database once: `docker compose exec postgres createdb -U replyfi
 - **Transfer** hands an open chat to a teammate (they get it in their dock and join when they type) or back to the queue for a department, with an optional internal note.
 - **Settings → Chat widget** sets the widget's theme color, bubble side, greetings, departments and whether to ask for an email, with a live preview.
 - **Ratings**: when a chat ends the visitor can give it a 👍 / 👎 and a comment (can be turned off in Settings → Chat widget). Agents see it in the chat and in History, which can filter by rating.
+- **Reports** (last 7 / 30 / 90 days, in your time zone): chats, missed chats, first-reply time, chat length, satisfaction and offline messages compared with the period before; chats per day, busiest hours, departments and a per-agent table.
 - Presence lives in Redis and Socket.IO uses the Redis adapter, so you can run several API instances behind a load balancer. See `docs/PLAN.md` → *Scaling decisions*.

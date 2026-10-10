@@ -78,6 +78,8 @@ export const conversations = pgTable(
     assigneeId: text('assignee_id').references(() => users.id),
     participantIds: text('participant_ids').array().notNull().default(sql`'{}'::text[]`),
     department: text('department'),
+    /** Who started it: the visitor (from the widget) or an agent (proactive chat). */
+    initiatedBy: text('initiated_by', { enum: ['visitor', 'agent'] }).notNull().default('visitor'),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     firstReplyAt: timestamp('first_reply_at', { withTimezone: true }),
     endedAt: timestamp('ended_at', { withTimezone: true }),

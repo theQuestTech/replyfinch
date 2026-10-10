@@ -180,6 +180,7 @@ export function createConversationService(db: Db) {
           id: newId.conversation(),
           accountId,
           visitorId,
+          initiatedBy: 'agent',
           status: 'active',
           assigneeId: agent.id,
           participantIds: [agent.id],

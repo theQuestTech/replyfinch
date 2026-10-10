@@ -81,6 +81,11 @@ export const chatRateSchema = z.object({
   comment: z.string().trim().max(1000).optional(),
 });
 
+export const reportQuerySchema = z.object({
+  days: z.coerce.number().int().refine((d) => [7, 30, 90].includes(d), 'Use 7, 30 or 90').default(7),
+  tz: z.string().max(64).default('UTC'),
+});
+
 export const MIN_PASSWORD_LENGTH = 10;
 const password = z.string().min(MIN_PASSWORD_LENGTH, `Use at least ${MIN_PASSWORD_LENGTH} characters`).max(200);
 

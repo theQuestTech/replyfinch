@@ -12,6 +12,7 @@ import { Login } from './pages/Login';
 import { Visitors } from './pages/Visitors';
 import { History } from './pages/History';
 import { Inbox } from './pages/Inbox';
+import { Reports } from './pages/Reports';
 import { SettingsLayout } from './pages/settings/SettingsLayout';
 import { Profile } from './pages/settings/Profile';
 import { Team } from './pages/settings/Team';
@@ -54,6 +55,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="visitors" element={<Visitors />} />
             <Route path="inbox" element={<Inbox />} />
             <Route path="history" element={<History />} />
+            <Route path="reports" element={<Reports />} />
             <Route path="settings" element={<SettingsLayout />}>
               <Route index element={<Navigate to="profile" replace />} />
               <Route path="profile" element={<Profile />} />

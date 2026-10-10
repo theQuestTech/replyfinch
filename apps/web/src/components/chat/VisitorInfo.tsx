@@ -1,9 +1,10 @@
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Eye, Globe, House, Link2, Monitor, Smartphone, Tablet, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import { duration, initials, localTime, referrerHost, visitorLabel } from '../../lib/format';
-import type { DeskVisitor } from '../../lib/store';
+import { useDesk, type DeskVisitor } from '../../lib/store';
 import { Avatar, SectionLabel } from '../ui';
 
 type Patch = Partial<Pick<DeskVisitor, 'name' | 'email' | 'phone' | 'notes' | 'tags'>>;
@@ -27,13 +28,13 @@ export function VisitorInfo({ visitor, width }: { visitor: DeskVisitor; width: n
             </div>
           </div>
         </div>
-        <Field value={visitor.name} placeholder="Add name" onSave={(name) => save({ name })} />
-        <Field value={visitor.email} placeholder="Add email" type="email" onSave={(email) => save({ email })} />
-        <Field value={visitor.phone} placeholder="Add phone number" onSave={(phone) => save({ phone })} />
-        <Field value={visitor.notes} placeholder="Add visitor notes" multiline onSave={(notes) => save({ notes })} />
+        <ProfileField value={visitor.name} placeholder="Add name" onSave={(name) => save({ name })} />
+        <ProfileField value={visitor.email} placeholder="Add email" type="email" onSave={(email) => save({ email })} />
+        <ProfileField value={visitor.phone} placeholder="Add phone number" onSave={(phone) => save({ phone })} />
+        <ProfileField value={visitor.notes} placeholder="Add visitor notes" multiline onSave={(notes) => save({ notes })} />
       </div>
 
-      <Tags tags={visitor.tags} onChange={(tags) => save({ tags })} />
+      <TagEditor tags={visitor.tags} onChange={(tags) => save({ tags })} />
 
       <div className="grid grid-cols-3 overflow-hidden rounded-[10px] border border-line">
         {[
@@ -63,6 +64,14 @@ export function VisitorInfo({ visitor, width }: { visitor: DeskVisitor; width: n
           <DeviceIcon className="size-3.5 text-ink-2" /> {visitor.browser} · {visitor.os}
         </div>
       </div>
+
+      <Link
+        to={`/customers/${visitor.id}`}
+        onClick={() => useDesk.getState().minimize()}
+        className="text-xs font-semibold text-primary hover:underline"
+      >
+        View customer profile →
+      </Link>
     </aside>
   );
 }
@@ -76,7 +85,8 @@ function PathRow({ icon: Icon, text, current }: { icon: typeof Eye; text: string
   );
 }
 
-function Field({
+/** Click-to-edit field that saves on blur / Enter. Also used on the customer profile. */
+export function ProfileField({
   value,
   placeholder,
   onSave,
@@ -113,7 +123,7 @@ function Field({
   );
 }
 
-function Tags({ tags, onChange }: { tags: string[]; onChange: (t: string[]) => void }) {
+export function TagEditor({ tags, onChange }: { tags: string[]; onChange: (t: string[]) => void }) {
   const [adding, setAdding] = useState(false);
   const [text, setText] = useState('');
   const add = () => {

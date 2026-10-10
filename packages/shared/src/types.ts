@@ -224,3 +224,40 @@ export interface Report {
     bad: number;
   }[];
 }
+
+/** A row on the Customers page: anyone who chatted, left a message, or was named. */
+export interface CustomerSummary {
+  id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  tags: string[];
+  country: string | null;
+  visits: number;
+  firstSeenAt: number;
+  lastSeenAt: number;
+  chats: number;
+  lastChatAt: number | null;
+  good: number;
+  bad: number;
+  offlineMessages: number;
+}
+
+export interface CustomerList {
+  items: CustomerSummary[];
+  total: number;
+}
+
+export interface CustomerProfile {
+  customer: CustomerSummary & {
+    notes: string | null;
+    timezone: string | null;
+    browser: string | null;
+    os: string | null;
+    device: string | null;
+  };
+  conversations: HistoryEntry[];
+  offlineMessages: OfflineMessage[];
+  /** Most recent pages first. */
+  pages: { url: string; title: string; at: number }[];
+}

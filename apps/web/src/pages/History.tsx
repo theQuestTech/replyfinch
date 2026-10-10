@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { History as HistoryIcon, Mail, MessageCircle, Search, X } from 'lucide-react';
 import type { Conversation, HistoryEntry, HistoryPage, Message } from '@replyfinch/shared';
@@ -231,7 +231,9 @@ function ChatDetail({ id, entry, onClose }: { id: string; entry: HistoryEntry | 
       <div className="flex items-start gap-3 border-b border-line px-5 py-4" data-testid="history-detail">
         <Avatar text={initials(c?.visitorName ?? entry?.visitorName)} size={40} />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-base font-bold">{visitorName}</div>
+          <Link to={`/customers/${c?.visitorId ?? entry?.visitorId}`} className="block truncate text-base font-bold hover:underline">
+            {visitorName}
+          </Link>
           {entry?.visitorEmail && (
             <a href={`mailto:${entry.visitorEmail}`} className="flex items-center gap-1 truncate text-xs text-primary hover:underline">
               <Mail className="size-3" /> {entry.visitorEmail}

@@ -86,6 +86,14 @@ export const reportQuerySchema = z.object({
   tz: z.string().max(64).default('UTC'),
 });
 
+export const customersQuerySchema = z.object({
+  q: z.string().trim().max(200).optional(),
+  tag: z.string().trim().max(40).optional(),
+  sort: z.enum(['recent', 'chats', 'name']).default('recent'),
+  offset: z.coerce.number().int().min(0).max(100_000).default(0),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
 export const MIN_PASSWORD_LENGTH = 10;
 const password = z.string().min(MIN_PASSWORD_LENGTH, `Use at least ${MIN_PASSWORD_LENGTH} characters`).max(200);
 

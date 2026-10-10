@@ -6,6 +6,8 @@ import { conversations, messages, users, visitors } from '../db/schema';
 export interface HistoryQuery {
   q?: string;
   agentId?: string;
+  /** Only this visitor's chats (the Customers page). */
+  visitorId?: string;
   status: 'all' | 'open' | 'ended';
   rating?: 'good' | 'bad' | 'any';
   days?: number;
@@ -24,6 +26,7 @@ export function createHistoryService(db: Db) {
      */
     async list(accountId: string, query: HistoryQuery): Promise<HistoryPage> {
       const where: SQL[] = [eq(conversations.accountId, accountId)];
+      if (query.visitorId) where.push(eq(conversations.visitorId, query.visitorId));
       if (query.status === 'ended') where.push(eq(conversations.status, 'ended'));
       if (query.status === 'open') where.push(inArray(conversations.status, ['waiting', 'active']));
       if (query.agentId) {

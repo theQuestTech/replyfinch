@@ -3,6 +3,7 @@ import cors from '@fastify/cors';
 import { Redis } from 'ioredis';
 import { eq } from 'drizzle-orm';
 import {
+  customersQuerySchema,
   historyQuerySchema,
   loginSchema,
   offlineStatusSchema,
@@ -26,6 +27,7 @@ import { createHistoryService } from './services/history';
 import { createOfflineService } from './services/offline';
 import { createWidgetSettingsService } from './services/widget-settings';
 import { createReportService } from './services/reports';
+import { createCustomerService } from './services/customers';
 import { settingsRoutes } from './routes/settings';
 
 declare module 'fastify' {
@@ -48,6 +50,7 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
   const offline = createOfflineService(db);
   const widgetSettings = createWidgetSettingsService(db);
   const reports = createReportService(db);
+  const customers = createCustomerService(db, history, offline);
 
   // Never send internal details (SQL, stack traces) to clients; log them instead.
   app.setErrorHandler((err: Error & { statusCode?: number }, req, reply) => {
@@ -173,6 +176,20 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
       if (!m) return reply.code(404).send({ error: 'not_found' });
       realtime.offlineChanged(req.agent.acc, m);
       return m;
+    });
+
+    r.get('/customers', async (req, reply) => {
+      const q = customersQuerySchema.safeParse(req.query);
+      if (!q.success) return reply.code(400).send({ error: 'invalid_input' });
+      return customers.list(req.agent.acc, q.data);
+    });
+
+    r.get('/customers/tags', async (req) => customers.tags(req.agent.acc));
+
+    r.get<{ Params: { id: string } }>('/customers/:id', async (req, reply) => {
+      const p = await customers.profile(req.agent.acc, req.params.id);
+      if (!p) return reply.code(404).send({ error: 'not_found' });
+      return p;
     });
 
     r.get('/reports', async (req, reply) => {

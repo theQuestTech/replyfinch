@@ -63,6 +63,16 @@ export function createOfflineService(db: Db) {
       return Promise.all(rows.map(dto));
     },
 
+    async listForVisitor(accountId: string, visitorId: string) {
+      const rows = await db
+        .select()
+        .from(offlineMessages)
+        .where(and(eq(offlineMessages.accountId, accountId), eq(offlineMessages.visitorId, visitorId)))
+        .orderBy(desc(offlineMessages.id))
+        .limit(100);
+      return Promise.all(rows.map(dto));
+    },
+
     async countNew(accountId: string) {
       const [r] = await db
         .select({ n: sql<number>`count(*)` })

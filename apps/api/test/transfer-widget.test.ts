@@ -179,6 +179,8 @@ describe('widget settings', () => {
       offlineGreeting: 'We are closed — leave a note.',
       departments: ['Orders', 'Returns'],
       emailField: 'required',
+      phoneField: 'required',
+      departmentField: 'shown',
       ratings: false,
     };
     expect((await call('PUT', '/settings/widget', daniel.token, next)).status).toBe(403);

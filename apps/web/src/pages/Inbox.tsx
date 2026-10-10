@@ -185,6 +185,11 @@ function MessageDetail({ m }: { m: OfflineMessage }) {
             >
               <Copy className="size-3.5" />
             </button>
+            {m.phone && (
+              <a href={`tel:${m.phone.replace(/[^+\d]/g, '')}`} className="ml-2 text-primary hover:underline">
+                {m.phone}
+              </a>
+            )}
           </div>
         </div>
         <div className="text-right text-xs text-ink-2">{dateTime(m.createdAt)}</div>

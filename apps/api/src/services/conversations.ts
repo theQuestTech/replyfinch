@@ -139,11 +139,11 @@ export function createConversationService(db: Db) {
     async start(
       accountId: string,
       visitorId: string,
-      input: { name: string; email?: string; department?: string; message: string; clientId: string },
+      input: { name: string; email?: string; phone?: string; department?: string; message: string; clientId: string },
     ) {
       await db
         .update(visitors)
-        .set({ name: input.name, ...(input.email ? { email: input.email } : {}) })
+        .set({ name: input.name, ...(input.email ? { email: input.email } : {}), ...(input.phone ? { phone: input.phone } : {}) })
         .where(eq(visitors.id, visitorId));
       const [conv] = await db
         .insert(conversations)

@@ -182,6 +182,7 @@ export function createRealtime(d: Deps) {
     await d.presence.putVisitor(record);
     await broadcastVisitor(record);
 
+    socket.emit('chat:state', { openConversationId: open?.id ?? null });
     // Catch up on availability changes missed while disconnected.
     const avail = await d.redis.get(`avail:${acc}`);
     if (avail !== null) socket.emit('agents:availability', { online: avail === '1' });
@@ -271,6 +272,7 @@ export function createRealtime(d: Deps) {
       await d.presence.updateVisitor(acc, vid, (rec) => {
         rec.name = parsed.data.name;
         if (parsed.data.email) rec.email = parsed.data.email;
+        if (parsed.data.phone) rec.phone = parsed.data.phone;
         rec.pastChats += 1;
         rec.lastActivityAt = Date.now();
       });
@@ -332,6 +334,7 @@ export function createRealtime(d: Deps) {
       const r = await d.presence.updateVisitor(acc, vid, (rec) => {
         rec.name = parsed.data.name;
         rec.email = parsed.data.email;
+        if (parsed.data.phone) rec.phone = parsed.data.phone;
         rec.lastActivityAt = Date.now();
       });
       if (r) await broadcastVisitor(r);

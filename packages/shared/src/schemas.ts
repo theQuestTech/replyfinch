@@ -20,9 +20,14 @@ export const pageSchema = z.object({
   referrer: z.string().max(2048).nullish(),
 });
 
+/** Lenient: digits, spaces, +, -, (, ), . — 6 to 30 characters. */
+export const PHONE_PATTERN = /^\+?[0-9 ().-]{6,30}$/;
+const phone = z.union([z.string().trim().regex(PHONE_PATTERN, 'Please check the phone number'), z.literal('')]).optional();
+
 export const chatStartSchema = z.object({
   name: z.string().trim().min(1).max(120),
   email: z.union([z.email(), z.literal('')]).optional(),
+  phone,
   department: z.string().max(120).optional(),
   message: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH),
   clientId: z.string().min(1).max(64),
@@ -72,6 +77,8 @@ export const widgetSettingsSchema = z.object({
     .max(20, 'Up to 20 departments')
     .refine((d) => new Set(d.map((x) => x.toLowerCase())).size === d.length, 'Each department needs a different name'),
   emailField: z.enum(['optional', 'required', 'hidden']),
+  phoneField: z.enum(['optional', 'required', 'hidden']),
+  departmentField: z.enum(['shown', 'hidden']),
   ratings: z.boolean(),
 });
 
@@ -144,6 +151,7 @@ export const shortcutSchema = z.object({
 export const offlineMessageSchema = z.object({
   name: z.string().trim().min(1).max(120),
   email: z.email(),
+  phone,
   department: z.string().max(120).optional(),
   message: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH),
   pageUrl: z.string().max(2048).optional(),

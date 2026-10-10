@@ -112,8 +112,12 @@ export interface WidgetSettings {
   greeting: string;
   /** Shown above the leave-a-message form when nobody is online. */
   offlineGreeting: string;
-  /** Visitors pick one before chatting; empty hides the question. Also the targets for transfers. */
+  /** Chat topics: agents transfer chats to them, and visitors can pick one (see departmentField). */
   departments: string[];
+  /** Ask visitors to pick a department on the pre-chat form. */
+  departmentField: 'shown' | 'hidden';
+  /** The phone number field on the pre-chat and leave-a-message forms. */
+  phoneField: 'optional' | 'required' | 'hidden';
   /** The email field on the pre-chat form (the leave-a-message form always asks for it). */
   emailField: 'optional' | 'required' | 'hidden';
   /** Ask visitors to rate the chat when it ends. */
@@ -126,6 +130,8 @@ export const DEFAULT_WIDGET_SETTINGS: WidgetSettings = {
   greeting: "Hi there 👋 Tell us a little about you and we'll connect you with the right team.",
   offlineGreeting: "We're not online right now. Leave a message and we'll get back to you by email.",
   departments: DEFAULT_DEPARTMENTS,
+  departmentField: 'hidden',
+  phoneField: 'optional',
   emailField: 'optional',
   ratings: true,
 };
@@ -152,6 +158,7 @@ export interface OfflineMessage {
   visitorId: string;
   name: string;
   email: string;
+  phone: string | null;
   department: string | null;
   message: string;
   pageUrl: string | null;

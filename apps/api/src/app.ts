@@ -286,6 +286,7 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?:
       visitorId: v.id,
       name: v.name,
       email: v.email,
+      phone: v.phone,
       config: {
         ...(await widgetSettings.get(account.id)),
         accountName: account.name,

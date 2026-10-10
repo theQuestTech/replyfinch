@@ -1,0 +1,1 @@
+ALTER TABLE "offline_messages" ADD COLUMN "phone" text;

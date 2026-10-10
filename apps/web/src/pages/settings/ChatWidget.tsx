@@ -185,11 +185,25 @@ function WidgetForm({ initial }: { initial: Settings }) {
                 <option value="hidden">Don’t ask</option>
               </select>
             </Field>
+            <Field label="Phone number" hint="Also asked on the leave-a-message form.">
+              <select className={inputClass} value={s.phoneField} onChange={(e) => set({ phoneField: e.target.value as WidgetSettings['phoneField'] })}>
+                <option value="optional">Ask, but optional</option>
+                <option value="required">Required</option>
+                <option value="hidden">Don’t ask</option>
+              </select>
+            </Field>
             <div className="flex flex-col gap-2">
               <span className="text-[13px] font-semibold">Departments</span>
-              <span className="text-xs text-ink-2">
-                Visitors pick one before chatting, and agents can transfer chats to them. Remove them all to skip the question.
-              </span>
+              <span className="text-xs text-ink-2">Agents can transfer chats to a department. You can also let visitors pick one before chatting.</span>
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="size-4 accent-primary"
+                  checked={s.departmentField === 'shown'}
+                  onChange={(e) => set({ departmentField: e.target.checked ? 'shown' : 'hidden' })}
+                />
+                Ask visitors to pick a department
+              </label>
               <div className="flex flex-wrap gap-2" data-testid="departments">
                 {s.departments.map((d) => (
                   <span key={d} className="flex items-center gap-1 rounded-full bg-muted py-1 pr-1 pl-3 text-[13px] font-medium">
@@ -271,7 +285,8 @@ function Preview({ s, accountName }: { s: WidgetSettings; accountName: string })
           <div className="rounded-xl border border-line bg-surface px-3 py-2.5 text-xs text-ink-2">{s.greeting}</div>
           <div className={input}>Your name</div>
           {s.emailField !== 'hidden' && <div className={input}>you@example.com{s.emailField === 'required' && ' *'}</div>}
-          {s.departments.length > 0 && <div className={input}>{s.departments[0]} ▾</div>}
+          {s.phoneField !== 'hidden' && <div className={input}>Phone number{s.phoneField === 'required' && ' *'}</div>}
+          {s.departmentField === 'shown' && s.departments.length > 0 && <div className={input}>{s.departments[0]} ▾</div>}
           <div className={clsx(input, 'h-14')}>How can we help?</div>
           <div className="rounded-[10px] py-2.5 text-center text-[13px] font-semibold" style={{ background: primary, color: on }}>
             Start chat

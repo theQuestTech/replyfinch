@@ -11,6 +11,7 @@ test('Customers lists people who chatted; the profile shows their chats and can 
   await w.locator('button.launcher').click();
   await w.locator('input[name=name]').fill(name);
   await w.locator('input[name=email]').fill(email);
+  await w.locator('input[name=phone]').fill('+47 555 0100');
   await w.locator('textarea[name=message]').fill('Do you ship to Norway?');
   await w.getByRole('button', { name: 'Start chat' }).click();
   await agent.getByTestId('queue-row').filter({ hasText: name }).getByRole('button', { name: 'Accept' }).click();
@@ -23,9 +24,8 @@ test('Customers lists people who chatted; the profile shows their chats and can 
   await expect(profile.getByRole('heading', { name })).toBeVisible();
   await expect(profile).toContainText('On your website now');
 
-  // Edit: phone and a tag.
-  await profile.getByLabel('Add phone number').fill('+47 555 0100');
-  await profile.getByLabel('Add phone number').press('Enter');
+  // The phone number from the chat form is on the profile; add a tag.
+  await expect(profile.getByLabel('Add phone number')).toHaveValue('+47 555 0100');
   await profile.getByRole('button', { name: '+ Add' }).click();
   await agent.keyboard.type(`nordic-${id}`);
   await agent.keyboard.press('Enter');

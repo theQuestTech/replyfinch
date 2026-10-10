@@ -20,7 +20,8 @@ export async function seed(url = env.DATABASE_URL) {
   const { db, sql } = createDb(url);
   try {
     const [existing] = await db.select().from(accounts).where(eq(accounts.id, DEMO_ACCOUNT_ID));
-    if (!existing) await db.insert(accounts).values({ id: DEMO_ACCOUNT_ID, name: 'Acme Books' });
+    if (!existing)
+      await db.insert(accounts).values({ id: DEMO_ACCOUNT_ID, name: 'Acme Books', widgetSettings: { departmentField: 'shown' } });
     const passwordHash = await hashPassword(DEMO_PASSWORD);
     for (const a of DEMO_AGENTS) {
       await db

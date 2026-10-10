@@ -141,6 +141,7 @@ export const offlineMessages = pgTable(
     visitorId: text('visitor_id').notNull().references(() => visitors.id),
     name: text('name').notNull(),
     email: text('email').notNull(),
+    phone: text('phone'),
     department: text('department'),
     message: text('message').notNull(),
     pageUrl: text('page_url'),

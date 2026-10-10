@@ -70,6 +70,7 @@ class ReplyfinchWidget {
   private config: WidgetConfig | null = null;
   private visitorName: string | null = null;
   private visitorEmail: string | null = null;
+  private visitorPhone: string | null = null;
   private conversation: Conversation | null = null;
   private messages: Message[] = [];
   private pending = new Map<string, Message>();
@@ -77,6 +78,7 @@ class ReplyfinchWidget {
   private open = false;
   private agentTyping: string | null = null;
   private typingTimer: number | undefined;
+  private agentTypingTimer: number | undefined;
   private isTyping = false;
 
   private root!: ShadowRoot;
@@ -84,6 +86,7 @@ class ReplyfinchWidget {
   private panel!: HTMLDivElement;
   private body!: HTMLDivElement;
   private badge!: HTMLSpanElement;
+  private launcher!: HTMLButtonElement;
   private typingEl!: HTMLDivElement;
   private composer!: HTMLDivElement;
   private subtitle!: HTMLDivElement;
@@ -114,7 +117,7 @@ class ReplyfinchWidget {
   }
 
   async start() {
-    this.mount();
+    if (!this.root) this.mount();
     const res = await fetch(`${this.api}/widget/session`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -126,20 +129,23 @@ class ReplyfinchWidget {
       }),
     });
     if (!res.ok) throw new Error(`Replyfinch: session failed (${res.status})`);
+    this.wrap.hidden = false;
     const s = (await res.json()) as {
       visitorToken: string;
       name: string | null;
       email: string | null;
+      phone?: string | null;
       config: WidgetConfig;
     };
     this.token = s.visitorToken;
     if (!this.isPopup) store.set(`rf_token_${this.accountId}`, s.visitorToken);
     // Defaults first, so an older API (mid-deploy) still gives a complete config.
     this.config = { ...DEFAULT_WIDGET_SETTINGS, ...s.config };
-    this.agentsOnline = s.config.agentsOnline > 0;
+    this.agentsOnline = (this.config.agentsOnline ?? 1) > 0;
     this.applyTheme(this.config);
     this.visitorName = s.name;
     this.visitorEmail = s.email;
+    this.visitorPhone = s.phone ?? null;
     this.renderHeader();
     this.render();
     this.connect(s.visitorToken);
@@ -156,18 +162,29 @@ class ReplyfinchWidget {
       if (!this.isPopup) this.sendPage();
     });
     socket.on('chat:resume', ({ conversation, messages, proactive }) => {
+      if (this.conversation?.id !== conversation.id) this.resetTyping();
       this.conversation = conversation;
       this.messages = messages;
+      this.formDirty = false;
       this.render();
-      if (proactive && !this.open && !this.popup) {
-        this.toggle(true);
+      // Open for a proactive chat, but don't steal focus from what the visitor is doing on the page.
+      if (proactive && !this.open && !this.popup) this.toggle(true, { focus: false });
+    });
+    socket.on('chat:state', ({ openConversationId }) => {
+      // The chat ended while we were disconnected (we missed chat:ended).
+      const c = this.conversation;
+      if (c && c.status !== 'ended' && c.id !== openConversationId) {
+        this.conversation = { ...c, status: 'ended' };
+        this.agentTyping = null;
+        this.render();
       }
     });
     socket.on('message:new', (m) => {
       if (!this.conversation || m.conversationId !== this.conversation.id) return;
       this.addMessage(m);
-      if (m.authorType !== 'visitor') {
+      if (m.authorType === 'agent' || m.authorType === 'bot') {
         this.agentTyping = null;
+        this.renderTyping();
         if (!this.open && !this.popup) this.setUnread(this.unread + 1);
       }
     });
@@ -175,6 +192,9 @@ class ReplyfinchWidget {
       if (!this.conversation || t.conversationId !== this.conversation.id) return;
       this.agentTyping = t.isTyping ? t.name : null;
       this.renderTyping();
+      // If the agent's "stopped typing" never arrives (closed tab), clear it anyway.
+      window.clearTimeout(this.agentTypingTimer);
+      if (t.isTyping) this.agentTypingTimer = window.setTimeout(() => ((this.agentTyping = null), this.renderTyping()), 6000);
     });
     socket.on('agents:availability', ({ online }) => {
       window.clearTimeout(this.offlineTimer);
@@ -182,8 +202,9 @@ class ReplyfinchWidget {
       // An agent reloading their page drops offline for a moment; don't flip the widget for that.
       this.offlineTimer = window.setTimeout(() => this.setAvailability(false), 10_000);
     });
-    socket.on('chat:ended', () => {
-      if (this.conversation) this.conversation = { ...this.conversation, status: 'ended' };
+    socket.on('chat:ended', ({ conversationId }) => {
+      if (!this.conversation || this.conversation.id !== conversationId) return; // a late event for an older chat
+      this.conversation = { ...this.conversation, status: 'ended' };
       this.agentTyping = null;
       this.render();
     });
@@ -259,17 +280,23 @@ class ReplyfinchWidget {
     if (this.isPopup) close.style.marginLeft = 'auto';
     close.addEventListener('click', () => (this.isPopup ? window.close() : this.toggle(false)));
     header.append(close);
-    this.body = el('div', { class: 'body' }) as HTMLDivElement;
+    this.body = el('div', { class: 'body', 'aria-live': 'polite' }) as HTMLDivElement;
     this.typingEl = el('div', { class: 'typing' }) as HTMLDivElement;
     this.composer = el('div') as HTMLDivElement;
     this.panel.append(header, this.body, this.typingEl, this.composer);
 
-    const launcher = el('button', { class: 'launcher', 'aria-label': 'Open chat' }, CHAT);
+    const launcher = el('button', { class: 'launcher', 'aria-label': 'Open chat', 'aria-expanded': 'false' }, CHAT) as HTMLButtonElement;
+    this.launcher = launcher;
     this.badge = el('span', { class: 'badge', hidden: '' }) as HTMLSpanElement;
     launcher.append(this.badge);
     launcher.addEventListener('click', () => this.toggle());
     wrap.append(this.panel, launcher);
     this.root.append(style, wrap);
+    this.panel.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !this.isPopup) this.toggle(false);
+    });
+    // Hidden until the session works, so a failed start never shows a dead bubble.
+    wrap.hidden = true;
     if (this.isPopup) this.toggle(true);
   }
 
@@ -312,7 +339,7 @@ class ReplyfinchWidget {
     }, 800);
   }
 
-  private toggle(force?: boolean) {
+  private toggle(force?: boolean, opts: { focus?: boolean } = {}) {
     // While popped out, the bubble brings the chat window to the front instead.
     if (this.popup && !this.popup.closed && force !== false) {
       this.popup.focus();
@@ -321,10 +348,13 @@ class ReplyfinchWidget {
     this.open = force ?? !this.open;
     this.panel.hidden = !this.open;
     this.wrap.classList.toggle('open', this.open);
+    this.launcher.setAttribute('aria-expanded', String(this.open));
     if (this.open) {
       this.setUnread(0);
-      this.scrollDown();
-      (this.root.querySelector('textarea, input') as HTMLElement | null)?.focus();
+      this.scrollDown(true);
+      if (opts.focus !== false) (this.root.querySelector('textarea, input') as HTMLElement | null)?.focus();
+    } else if (!this.isPopup && this.root.activeElement) {
+      this.launcher.focus(); // keyboard users land back on the bubble
     }
   }
 
@@ -344,6 +374,30 @@ class ReplyfinchWidget {
   }
 
   private render() {
+    // Re-rendering rebuilds the fields: keep what the visitor typed, where the cursor was,
+    // and their scroll position if they scrolled up to read.
+    const kept = new Map<string, { value: string; focused: boolean; start: number | null; end: number | null }>();
+    for (const f of this.root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-keep]')) {
+      kept.set(f.dataset.keep!, { value: f.value, focused: this.root.activeElement === f, start: f.selectionStart, end: f.selectionEnd });
+    }
+    const nearBottom = this.body.scrollHeight - this.body.scrollTop - this.body.clientHeight < 80;
+    const scrollTop = this.body.scrollTop;
+    this.renderInner();
+    for (const f of this.root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-keep]')) {
+      const k = kept.get(f.dataset.keep!);
+      if (!k) continue;
+      f.value = k.value;
+      f.dispatchEvent(new Event('rf:restore'));
+      if (k.focused) {
+        f.focus({ preventScroll: true });
+        if (k.start !== null) f.setSelectionRange(k.start, k.end ?? k.start);
+      }
+    }
+    if (nearBottom) this.scrollDown();
+    else this.body.scrollTop = scrollTop;
+  }
+
+  private renderInner() {
     this.body.innerHTML = '';
     this.composer.innerHTML = '';
     if (this.popup && !this.popup.closed) return this.renderPoppedOut();
@@ -353,7 +407,6 @@ class ReplyfinchWidget {
     this.renderTyping();
     if (this.conversation.status === 'ended') this.renderEnded();
     else this.renderComposer();
-    this.scrollDown();
   }
 
   private renderPoppedOut() {
@@ -385,6 +438,7 @@ class ReplyfinchWidget {
     const email = el('input', emailAttrs) as HTMLInputElement;
     if (this.visitorEmail) email.value = this.visitorEmail;
     const dept = el('select', { name: 'department' }) as HTMLSelectElement;
+    dept.append(el('option', { value: '' }, 'Choose a topic (optional)'));
     for (const d of cfg?.departments ?? []) dept.append(el('option', { value: d }, escapeHtml(d)));
     const message = el('textarea', { name: 'message', required: '', rows: '3', placeholder: 'How can we help?' }) as HTMLTextAreaElement;
     const label = (t: string, input: HTMLElement) => {
@@ -394,9 +448,12 @@ class ReplyfinchWidget {
     };
     const err = el('div', { class: 'error' });
     const submit = el('button', { class: 'btn', type: 'submit' }, 'Start chat') as HTMLButtonElement;
+    const phone = phoneInput(cfg?.phoneField === 'required');
+    if (this.visitorPhone) phone.value = this.visitorPhone;
     f.append(label('Name', name));
     if (cfg?.emailField !== 'hidden') f.append(label('Email', email));
-    if (cfg?.departments.length) f.append(label('Department', dept));
+    if (cfg?.phoneField !== 'hidden') f.append(label('Phone number', phone));
+    if (cfg?.departmentField === 'shown' && cfg.departments.length) f.append(label('Department', dept));
     f.append(label('Message', message), err, submit);
     f.addEventListener('input', () => (this.formDirty = true));
     f.addEventListener('submit', async (e) => {
@@ -407,16 +464,18 @@ class ReplyfinchWidget {
       const res = await this.socket.timeout(10_000).emitWithAck('chat:start', {
         name: name.value.trim(),
         email: email.value.trim() || undefined,
+        phone: phone.value.trim() || undefined,
         department: dept.value || undefined,
         message: message.value.trim(),
         clientId: cid(),
       }).catch(() => ({ ok: false as const, error: 'timeout' }));
       submit.disabled = false;
       if (!res.ok) {
-        err.textContent = 'Something went wrong. Please try again.';
+        err.textContent = res.error === 'invalid_input' ? 'Please check your details.' : 'Something went wrong. Please try again.';
         return;
       }
       this.visitorName = name.value.trim();
+      this.visitorPhone = phone.value.trim() || this.visitorPhone;
       this.formDirty = false;
       this.conversation = res.data.conversation;
       this.messages = res.data.messages;
@@ -451,6 +510,7 @@ class ReplyfinchWidget {
     const email = el('input', { name: 'email', type: 'email', required: '', placeholder: 'you@example.com', autocomplete: 'email' }) as HTMLInputElement;
     if (this.visitorEmail) email.value = this.visitorEmail;
     const dept = el('select', { name: 'department' }) as HTMLSelectElement;
+    dept.append(el('option', { value: '' }, 'Choose a topic (optional)'));
     for (const d of this.config?.departments ?? []) dept.append(el('option', { value: d }, escapeHtml(d)));
     const message = el('textarea', { name: 'message', required: '', rows: '4', placeholder: 'How can we help?' }) as HTMLTextAreaElement;
     const label = (t: string, input: HTMLElement) => {
@@ -460,8 +520,11 @@ class ReplyfinchWidget {
     };
     const err = el('div', { class: 'error' });
     const submit = el('button', { class: 'btn', type: 'submit' }, 'Send message') as HTMLButtonElement;
+    const phone = phoneInput(this.config?.phoneField === 'required');
+    if (this.visitorPhone) phone.value = this.visitorPhone;
     f.append(label('Name', name), label('Email', email));
-    if (this.config?.departments.length) f.append(label('Department', dept));
+    if (this.config?.phoneField !== 'hidden') f.append(label('Phone number', phone));
+    if (this.config?.departmentField === 'shown' && this.config.departments.length) f.append(label('Department', dept));
     f.append(label('Message', message), err, submit);
     f.addEventListener('input', () => (this.formDirty = true));
     f.addEventListener('submit', async (e) => {
@@ -474,6 +537,7 @@ class ReplyfinchWidget {
         .timeout(10_000)
         .emitWithAck('offline:send', {
           ...sent,
+          phone: phone.value.trim() || undefined,
           department: dept.value || undefined,
           message: message.value.trim(),
           pageUrl: this.isPopup ? undefined : location.href,
@@ -500,7 +564,11 @@ class ReplyfinchWidget {
 
   private renderComposer() {
     const c = el('div', { class: 'composer' });
-    const ta = el('textarea', { rows: '1', placeholder: 'Type a message…', 'aria-label': 'Message' }) as HTMLTextAreaElement;
+    const ta = el('textarea', { rows: '1', placeholder: 'Type a message…', 'aria-label': 'Message', 'data-keep': 'composer' }) as HTMLTextAreaElement;
+    ta.addEventListener('rf:restore', () => {
+      ta.style.height = 'auto';
+      ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
+    });
     const send = el('button', { class: 'send', 'aria-label': 'Send' }, SEND) as HTMLButtonElement;
     const submit = () => {
       const body = ta.value.trim();
@@ -559,7 +627,7 @@ class ReplyfinchWidget {
       box.append(row);
     } else if (r.step === 'comment') {
       box.append(el('div', { class: 'rate-title' }, r.value === 'good' ? 'Glad to hear it! Anything to add?' : "Sorry about that. What could we do better?"));
-      const ta = el('textarea', { rows: '2', placeholder: 'Your comment (optional)', 'aria-label': 'Comment', maxlength: '1000' }) as HTMLTextAreaElement;
+      const ta = el('textarea', { rows: '2', placeholder: 'Your comment (optional)', 'aria-label': 'Comment', maxlength: '1000', 'data-keep': 'rating' }) as HTMLTextAreaElement;
       const row = el('div', { class: 'rate-row' });
       const submit = el('button', { class: 'btn' }, 'Send') as HTMLButtonElement;
       submit.addEventListener('click', async () => {
@@ -601,7 +669,7 @@ class ReplyfinchWidget {
       box.append(b);
     } else {
       const f = el('form', { class: 'rate-row' }) as HTMLFormElement;
-      const input = el('input', { type: 'email', required: '', placeholder: 'you@example.com', 'aria-label': 'Your email', autocomplete: 'email' }) as HTMLInputElement;
+      const input = el('input', { type: 'email', required: '', placeholder: 'you@example.com', 'aria-label': 'Your email', autocomplete: 'email', 'data-keep': 'transcript' }) as HTMLInputElement;
       if (this.visitorEmail) input.value = this.visitorEmail;
       const send = el('button', { class: 'btn', type: 'submit' }, 'Send') as HTMLButtonElement;
       const err = el('div', { class: 'error' });
@@ -640,6 +708,7 @@ class ReplyfinchWidget {
     const c = el('div', { class: 'composer' });
     const again = el('button', { class: 'btn', style: 'width:100%' }, 'Start a new chat');
     again.addEventListener('click', () => {
+      this.resetTyping();
       this.conversation = null;
       this.messages = [];
       this.render();
@@ -695,8 +764,19 @@ class ReplyfinchWidget {
       if (res && !res.ok) break;
     }
     this.pending.delete(clientId);
+    // Put the text back so nothing is lost, unless they've started typing something new.
+    const ta = this.root.querySelector<HTMLTextAreaElement>('[data-keep=composer]');
+    if (ta && !ta.value.trim()) ta.value = body;
     this.render();
-    this.body.append(el('div', { class: 'system' }, 'Message not sent — please try again.'));
+    this.body.append(el('div', { class: 'system' }, 'Message not sent — check your connection and try again.'));
+  }
+
+  /** Forget typing state from a previous chat. */
+  private resetTyping() {
+    window.clearTimeout(this.typingTimer);
+    window.clearTimeout(this.agentTypingTimer);
+    this.isTyping = false;
+    this.agentTyping = null;
   }
 
   private setTyping(on: boolean) {
@@ -708,9 +788,15 @@ class ReplyfinchWidget {
     this.socket.emit('typing', { conversationId: this.conversation.id, isTyping: on });
   }
 
-  private scrollDown() {
+  private scrollDown(_force = false) {
     requestAnimationFrame(() => (this.body.scrollTop = this.body.scrollHeight));
   }
+}
+
+function phoneInput(required: boolean) {
+  const attrs: Record<string, string> = { name: 'phone', type: 'tel', placeholder: '+1 555 123 4567', autocomplete: 'tel', inputmode: 'tel' };
+  if (required) attrs.required = '';
+  return el('input', attrs) as HTMLInputElement;
 }
 
 function escapeHtml(s: string) {
@@ -723,7 +809,9 @@ function boot() {
     const q = new URLSearchParams(location.search);
     const token = new URLSearchParams(location.hash.slice(1)).get('t');
     const account = q.get('account');
-    const api = (q.get('api') ?? import.meta.env.VITE_API_URL ?? 'http://localhost:4000').replace(/\/$/, '');
+    // Only our own API: the page must not be pointable at someone else's server.
+    const built = import.meta.env.VITE_API_URL?.replace(/\/$/, '');
+    const api = built ?? (q.get('api') ?? 'http://localhost:4000').replace(/\/$/, '');
     if (!account || !token) return console.warn('Replyfinch: pop-out window opened without a chat');
     history.replaceState(null, '', location.pathname + location.search); // hide the token from the address bar
     const w = new ReplyfinchWidget(account, api, { popupToken: token });
@@ -740,7 +828,12 @@ function boot() {
   // chat.html sits next to widget.js (src/chat.html during development).
   const popupUrl = script?.src ? new URL('chat.html', script.src).toString() : undefined;
   const w = new ReplyfinchWidget(accountId, api, { popupUrl });
-  const go = () => w.start().catch((e) => console.error(e));
+  // If the API is briefly unreachable, try again once a little later.
+  const go = () =>
+    w.start().catch((e) => {
+      console.error(e);
+      setTimeout(() => w.start().catch((e2) => console.error(e2)), 15_000);
+    });
   if (document.body) go();
   else document.addEventListener('DOMContentLoaded', go);
 }

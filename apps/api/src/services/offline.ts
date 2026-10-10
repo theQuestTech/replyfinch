@@ -16,6 +16,7 @@ export function createOfflineService(db: Db) {
       visitorId: r.visitorId,
       name: r.name,
       email: r.email,
+      phone: r.phone,
       department: r.department,
       message: r.message,
       pageUrl: r.pageUrl,
@@ -33,10 +34,13 @@ export function createOfflineService(db: Db) {
     async create(
       accountId: string,
       visitorId: string,
-      input: { name: string; email: string; department?: string; message: string; pageUrl?: string },
+      input: { name: string; email: string; phone?: string; department?: string; message: string; pageUrl?: string },
     ) {
       // Remember who they are, like starting a chat does.
-      await db.update(visitors).set({ name: input.name, email: input.email }).where(eq(visitors.id, visitorId));
+      await db
+        .update(visitors)
+        .set({ name: input.name, email: input.email, ...(input.phone ? { phone: input.phone } : {}) })
+        .where(eq(visitors.id, visitorId));
       const [row] = await db
         .insert(offlineMessages)
         .values({
@@ -45,6 +49,7 @@ export function createOfflineService(db: Db) {
           visitorId,
           name: input.name,
           email: input.email,
+          phone: input.phone || null,
           department: input.department || null,
           message: input.message,
           pageUrl: input.pageUrl || null,

@@ -15,6 +15,7 @@ test('admin customizes the chat widget; the website shows it', async ({ browser 
     await admin.getByText('Bottom left').click();
     await admin.getByLabel('Greeting').fill('Hey! Questions about a book? Ask away.');
     await admin.getByLabel('Email address').selectOption('required');
+    await admin.getByLabel('Phone number').selectOption('required');
     for (const d of before.departments as string[]) await admin.getByRole('button', { name: `Remove ${d}` }).click();
     await admin.getByLabel('New department').fill('Orders');
     await admin.getByLabel('New department').press('Enter');
@@ -33,7 +34,17 @@ test('admin customizes the chat widget; the website shows it', async ({ browser 
     await expect(w.locator('.header')).toHaveCSS('background-color', 'rgb(15, 118, 110)');
     await expect(w.locator('input[name=email]')).toHaveAttribute('required', '');
     await expect(w.locator('select[name=department]')).toHaveCount(1);
-    await expect(w.locator('select[name=department] option')).toHaveText(['Orders']);
+    await expect(w.locator('select[name=department] option')).toHaveText(['Choose a topic (optional)', 'Orders']);
+    await expect(w.locator('input[name=phone]')).toHaveAttribute('required', '');
+
+    // Turning the department question off hides it; departments stay for transfers.
+    await admin.getByText('Ask visitors to pick a department').click();
+    await admin.getByRole('button', { name: 'Save changes' }).click();
+    await expect(admin.getByText('Saved', { exact: true })).toBeVisible();
+    await visitor.reload();
+    await w.locator('button.launcher').click();
+    await expect(w.locator('input[name=phone]')).toBeVisible();
+    await expect(w.locator('select[name=department]')).toHaveCount(0);
   } finally {
     // Put the demo account back for the other tests.
     await admin.evaluate(async (s) => {

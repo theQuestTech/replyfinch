@@ -19,7 +19,7 @@ export interface VisitorClientEvents {
   /** Keeps the visitor listed as online; sent every HEARTBEAT_INTERVAL_MS. */
   'visitor:heartbeat': () => void;
   'chat:start': (
-    p: { name: string; email?: string; department?: string; message: string; clientId: string },
+    p: { name: string; email?: string; phone?: string; department?: string; message: string; clientId: string },
     ack: Ack<{ conversation: Conversation; messages: Message[] }>,
   ) => void;
   'message:send': (p: { conversationId: string; body: string; clientId: string }, ack: Ack<Message>) => void;
@@ -31,7 +31,7 @@ export interface VisitorClientEvents {
   'chat:rate': (p: { conversationId: string; rating: 'good' | 'bad'; comment?: string }, ack: Ack<{ ok: true }>) => void;
   /** Leave a message while no agent is online. */
   'offline:send': (
-    p: { name: string; email: string; department?: string; message: string; pageUrl?: string },
+    p: { name: string; email: string; phone?: string; department?: string; message: string; pageUrl?: string },
     ack: Ack<{ id: string }>,
   ) => void;
 }
@@ -44,6 +44,8 @@ export interface VisitorServerEvents {
   'chat:ended': (p: { conversationId: string }) => void;
   /** Whether any agent is online (status "online", not away) — switches the widget between chat and leave-a-message. */
   'agents:availability': (p: { online: boolean }) => void;
+  /** Sent on every (re)connect: the visitor's open chat, if any — catches a chat:ended missed while offline. */
+  'chat:state': (p: { openConversationId: string | null }) => void;
 }
 
 // ---------- /agent ----------

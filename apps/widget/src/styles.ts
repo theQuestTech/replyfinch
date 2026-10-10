@@ -1,6 +1,6 @@
 // Scoped to the widget's shadow root, so host-page CSS can't leak in or out.
 export const styles = `
-:host { all: initial; }
+:host { all: initial !important; }
 * { box-sizing: border-box; font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 .rf { --navy:#14213D; --gold:#FFC93C; --primary:#2F5BEA; --primary-subtle:#EAF0FE; --canvas:#F5F7FB;
   --surface:#fff; --muted:#F0F2F7; --border:#E3E7EF; --text:#121826; --text-2:#5B6475; --success:#1F9D55; --danger:#DC2626;
@@ -15,10 +15,10 @@ export const styles = `
 .launcher svg { width: 26px; height: 26px; }
 .badge { position: absolute; top: -2px; right: -2px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px;
   background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; display: grid; place-items: center; border: 2px solid #fff; }
-.panel { position: absolute; right: 0; bottom: 72px; width: 370px; height: 580px; max-height: calc(100vh - 110px);
+.panel { position: absolute; right: 0; bottom: 72px; width: 370px; height: 580px; max-height: calc(100vh - 110px); max-height: calc(100dvh - 110px);
   background: var(--surface); border-radius: 18px; overflow: hidden; display: flex; flex-direction: column;
   box-shadow: 0 16px 48px rgba(20,33,61,.24); border: 1px solid var(--border); }
-.panel[hidden] { display: none; }
+.panel[hidden], .rf[hidden] { display: none; }
 .rf.popup { position: fixed; inset: 0; right: 0; bottom: 0; }
 .rf.popup .panel { position: absolute; inset: 0; width: 100%; height: 100%; max-height: none; border-radius: 0; border: 0; box-shadow: none; }
 .rf.popup .launcher { display: none; }
@@ -32,8 +32,9 @@ export const styles = `
   .popout + .close { margin-left: auto; }
   .rf { right: 12px; bottom: 12px; }
   .rf.left { right: auto; left: 12px; }
-  .panel { position: fixed; inset: 0; width: auto; height: auto; max-height: none; border-radius: 0;
+  .panel { position: fixed; inset: 0; width: auto; height: 100dvh; max-height: none; border-radius: 0;
     padding-bottom: env(safe-area-inset-bottom); }
+  .header { padding-top: calc(16px + env(safe-area-inset-top)); }
   /* The open chat fills the screen; the bubble would cover the send button. */
   .rf.open .launcher { display: none; }
   /* 16px stops iOS Safari zooming in when a field is focused. */

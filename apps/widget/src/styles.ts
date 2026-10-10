@@ -16,7 +16,17 @@ export const styles = `
   background: var(--surface); border-radius: 18px; overflow: hidden; display: flex; flex-direction: column;
   box-shadow: 0 16px 48px rgba(20,33,61,.24); border: 1px solid var(--border); }
 .panel[hidden] { display: none; }
+.rf.popup { position: fixed; inset: 0; right: 0; bottom: 0; }
+.rf.popup .panel { position: absolute; inset: 0; width: 100%; height: 100%; max-height: none; border-radius: 0; border: 0; box-shadow: none; }
+.rf.popup .launcher { display: none; }
+.popout { margin-left: auto; }
+.popout + .close { margin-left: 0; }
+.popped { margin: auto; text-align: center; display: flex; flex-direction: column; gap: 8px; align-items: stretch; padding: 24px 8px; }
+.popped-title { font-weight: 700; font-size: 15px; }
+.popped-text { color: var(--text-2); font-size: 13px; margin-bottom: 8px; }
 @media (max-width: 480px) {
+  .popout { display: none; }
+  .popout + .close { margin-left: auto; }
   .rf { right: 12px; bottom: 12px; }
   .panel { position: fixed; inset: 0; width: auto; height: auto; max-height: none; border-radius: 0; }
 }

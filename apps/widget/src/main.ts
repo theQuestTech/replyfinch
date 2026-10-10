@@ -15,6 +15,8 @@ const CHAT =
   '<svg viewBox="0 0 24 24" fill="none" stroke="#FFC93C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>';
 const CLOSE =
   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+const POPOUT =
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>';
 const SEND =
   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>';
 
@@ -76,7 +78,19 @@ class ReplyfinchWidget {
   private composer!: HTMLDivElement;
   private subtitle!: HTMLDivElement;
 
-  constructor(private accountId: string, private api: string) {}
+  private token: string | null = null;
+  private popup: Window | null = null;
+
+  constructor(
+    private accountId: string,
+    private api: string,
+    /** popupUrl: where the pop-out chat page lives. popupToken: set when running inside that page. */
+    private opts: { popupUrl?: string; popupToken?: string } = {},
+  ) {}
+
+  private get isPopup() {
+    return !!this.opts.popupToken;
+  }
 
   async start() {
     this.mount();
@@ -85,8 +99,8 @@ class ReplyfinchWidget {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         accountId: this.accountId,
-        visitorToken: store.get(`rf_token_${this.accountId}`) ?? undefined,
-        newSession: newSessionFlag(),
+        visitorToken: this.opts.popupToken ?? store.get(`rf_token_${this.accountId}`) ?? undefined,
+        newSession: this.isPopup ? false : newSessionFlag(),
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       }),
     });
@@ -97,26 +111,31 @@ class ReplyfinchWidget {
       email: string | null;
       config: WidgetConfig;
     };
-    store.set(`rf_token_${this.accountId}`, s.visitorToken);
+    this.token = s.visitorToken;
+    if (!this.isPopup) store.set(`rf_token_${this.accountId}`, s.visitorToken);
     this.config = s.config;
     this.visitorName = s.name;
     this.visitorEmail = s.email;
     this.renderHeader();
     this.render();
     this.connect(s.visitorToken);
-    this.trackActivity();
+    // The pop-out window isn't a page of the website, so it doesn't report page views.
+    if (!this.isPopup) this.trackActivity();
+    else document.title = `Chat with ${s.config.accountName}`;
   }
 
   // ------------------------------------------------------------- realtime
   private connect(token: string) {
     const socket: Sock = io(`${this.api}/visitor`, { auth: { token }, transports: ['websocket', 'polling'] });
     this.socket = socket;
-    socket.on('connect', () => this.sendPage());
+    socket.on('connect', () => {
+      if (!this.isPopup) this.sendPage();
+    });
     socket.on('chat:resume', ({ conversation, messages, proactive }) => {
       this.conversation = conversation;
       this.messages = messages;
       this.render();
-      if (proactive && !this.open) {
+      if (proactive && !this.open && !this.popup) {
         this.toggle(true);
       }
     });
@@ -125,7 +144,7 @@ class ReplyfinchWidget {
       this.addMessage(m);
       if (m.authorType !== 'visitor') {
         this.agentTyping = null;
-        if (!this.open) this.setUnread(this.unread + 1);
+        if (!this.open && !this.popup) this.setUnread(this.unread + 1);
       }
     });
     socket.on('typing', (t) => {
@@ -183,7 +202,7 @@ class ReplyfinchWidget {
     this.root = host.attachShadow({ mode: 'open' });
     const style = el('style');
     style.textContent = styles;
-    const wrap = el('div', { class: 'rf' });
+    const wrap = el('div', { class: this.isPopup ? 'rf popup' : 'rf' });
     this.panel = el('div', { class: 'panel', hidden: '', role: 'dialog', 'aria-label': 'Chat' }) as HTMLDivElement;
     const header = el('div', { class: 'header' });
     header.append(el('div', { class: 'logo' }, BIRD));
@@ -192,8 +211,14 @@ class ReplyfinchWidget {
     this.subtitle = el('div', { class: 'subtitle' }) as HTMLDivElement;
     titles.append(this.subtitle);
     header.append(titles);
+    if (this.opts.popupUrl && !this.isPopup) {
+      const pop = el('button', { class: 'close popout', 'aria-label': 'Open chat in a new window', title: 'Open in a new window' }, POPOUT);
+      pop.addEventListener('click', () => this.popOut());
+      header.append(pop);
+    }
     const close = el('button', { class: 'close', 'aria-label': 'Close chat' }, CLOSE);
-    close.addEventListener('click', () => this.toggle(false));
+    if (this.isPopup) close.style.marginLeft = 'auto';
+    close.addEventListener('click', () => (this.isPopup ? window.close() : this.toggle(false)));
     header.append(close);
     this.body = el('div', { class: 'body' }) as HTMLDivElement;
     this.typingEl = el('div', { class: 'typing' }) as HTMLDivElement;
@@ -206,9 +231,36 @@ class ReplyfinchWidget {
     launcher.addEventListener('click', () => this.toggle());
     wrap.append(this.panel, launcher);
     this.root.append(style, wrap);
+    if (this.isPopup) this.toggle(true);
+  }
+
+  /** Move the chat into its own small window that stays open while the visitor browses. */
+  private popOut() {
+    if (!this.opts.popupUrl || !this.token) return;
+    if (this.popup && !this.popup.closed) return this.popup.focus();
+    const url = new URL(this.opts.popupUrl);
+    url.searchParams.set('account', this.accountId);
+    url.searchParams.set('api', this.api);
+    // The token goes in the #fragment, which browsers never send to servers or in referrers.
+    url.hash = `t=${encodeURIComponent(this.token)}`;
+    const w = window.open(url.toString(), `replyfinch_${this.accountId}`, 'width=400,height=640,resizable=yes,scrollbars=no');
+    if (!w) return; // blocked by the browser — keep chatting here
+    this.popup = w;
+    this.render();
+    const timer = window.setInterval(() => {
+      if (this.popup && !this.popup.closed) return;
+      window.clearInterval(timer);
+      this.popup = null;
+      this.render();
+    }, 800);
   }
 
   private toggle(force?: boolean) {
+    // While popped out, the bubble brings the chat window to the front instead.
+    if (this.popup && !this.popup.closed && force !== false) {
+      this.popup.focus();
+      if (!this.open) return;
+    }
     this.open = force ?? !this.open;
     this.panel.hidden = !this.open;
     if (this.open) {
@@ -236,6 +288,7 @@ class ReplyfinchWidget {
   private render() {
     this.body.innerHTML = '';
     this.composer.innerHTML = '';
+    if (this.popup && !this.popup.closed) return this.renderPoppedOut();
     if (!this.conversation) return this.renderPrechat();
     for (const m of this.messages) this.body.append(this.messageEl(m));
     for (const m of this.pending.values()) this.body.append(this.messageEl(m, true));
@@ -243,6 +296,23 @@ class ReplyfinchWidget {
     if (this.conversation.status === 'ended') this.renderEnded();
     else this.renderComposer();
     this.scrollDown();
+  }
+
+  private renderPoppedOut() {
+    this.typingEl.textContent = '';
+    const box = el('div', { class: 'popped', 'data-rf': 'popped' });
+    box.append(el('div', { class: 'popped-title' }, 'Your chat is open in a separate window'));
+    box.append(el('div', { class: 'popped-text' }, 'Keep browsing — the chat window stays open.'));
+    const show = el('button', { class: 'btn' }, 'Show chat window');
+    show.addEventListener('click', () => this.popup?.focus());
+    const back = el('button', { class: 'btn ghost' }, 'Continue chatting here');
+    back.addEventListener('click', () => {
+      this.popup?.close();
+      this.popup = null;
+      this.render();
+    });
+    box.append(show, back);
+    this.body.append(box);
   }
 
   private renderPrechat() {
@@ -403,13 +473,28 @@ function escapeHtml(s: string) {
 }
 
 function boot() {
+  // Inside the pop-out chat page (chat.html): settings come from the URL.
+  if (document.querySelector('meta[name="replyfinch-popup"]')) {
+    const q = new URLSearchParams(location.search);
+    const token = new URLSearchParams(location.hash.slice(1)).get('t');
+    const account = q.get('account');
+    const api = (q.get('api') ?? import.meta.env.VITE_API_URL ?? 'http://localhost:4000').replace(/\/$/, '');
+    if (!account || !token) return console.warn('Replyfinch: pop-out window opened without a chat');
+    history.replaceState(null, '', location.pathname + location.search); // hide the token from the address bar
+    const w = new ReplyfinchWidget(account, api, { popupToken: token });
+    const go = () => w.start().catch((e) => console.error(e));
+    return document.body ? go() : document.addEventListener('DOMContentLoaded', go);
+  }
+
   const script =
     (document.currentScript as HTMLScriptElement | null) ??
     document.querySelector<HTMLScriptElement>('script[data-account]');
   const accountId = script?.dataset.account;
   if (!accountId) return console.warn('Replyfinch: missing data-account on the widget script tag');
   const api = (script?.dataset.api ?? import.meta.env.VITE_API_URL ?? 'http://localhost:4000').replace(/\/$/, '');
-  const w = new ReplyfinchWidget(accountId, api);
+  // chat.html sits next to widget.js (src/chat.html during development).
+  const popupUrl = script?.src ? new URL('chat.html', script.src).toString() : undefined;
+  const w = new ReplyfinchWidget(accountId, api, { popupUrl });
   const go = () => w.start().catch((e) => console.error(e));
   if (document.body) go();
   else document.addEventListener('DOMContentLoaded', go);

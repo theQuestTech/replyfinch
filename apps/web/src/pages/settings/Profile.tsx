@@ -3,6 +3,7 @@ import { MIN_PASSWORD_LENGTH, type Agent } from '@replyfinch/shared';
 import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { Button, Card, Field, inputClass } from '../../components/ui';
+import { desktopPermission, playChime, requestDesktopPermission, showDesktop, useNotifyPrefs } from '../../lib/notify';
 
 export function Profile() {
   const agent = useAuth((s) => s.agent)!;
@@ -87,6 +88,63 @@ export function Profile() {
           </div>
         </form>
       </Card>
+      <NotificationSettings />
     </div>
+  );
+}
+
+function NotificationSettings() {
+  const prefs = useNotifyPrefs();
+  const [perm, setPerm] = useState(desktopPermission);
+  const toggle = (key: 'sound' | 'desktop', label: string, hint: string) => (
+    <label className="flex cursor-pointer items-start gap-3">
+      <input
+        type="checkbox"
+        className="mt-1 size-4 accent-primary"
+        checked={prefs[key]}
+        onChange={(e) => prefs.set({ [key]: e.target.checked })}
+        aria-label={label}
+      />
+      <span>
+        <span className="block text-sm font-semibold">{label}</span>
+        <span className="block text-xs text-ink-2">{hint}</span>
+      </span>
+    </label>
+  );
+  return (
+    <Card className="p-6">
+      <h2 className="mb-1 text-base font-bold">Notifications</h2>
+      <p className="mb-4 text-sm text-ink-2">For new chats and new customer messages. Nothing plays while you’re set to Away.</p>
+      <div className="flex flex-col gap-4">
+        {toggle('sound', 'Play a sound', 'A short chime, even while Replyfinch is open.')}
+        {toggle('desktop', 'Desktop notifications', 'A pop-up when Replyfinch isn’t the tab in front.')}
+        {prefs.desktop && perm !== 'granted' && (
+          <div className="rounded-lg bg-warning-subtle px-3 py-2 text-sm">
+            {perm === 'denied' ? (
+              <>Your browser is blocking notifications for this site. Allow them in the browser’s site settings (the icon left of the address).</>
+            ) : perm === 'unsupported' ? (
+              <>This browser doesn’t support desktop notifications.</>
+            ) : (
+              <span className="flex items-center gap-3">
+                Your browser needs your permission first.
+                <Button variant="primary" onClick={async () => setPerm(await requestDesktopPermission())}>
+                  Allow notifications
+                </Button>
+              </span>
+            )}
+          </div>
+        )}
+        <div>
+          <Button
+            onClick={() => {
+              playChime(true);
+              showDesktop('Replyfinch test', 'This is what a new chat looks like.', 'rf-test', () => {});
+            }}
+          >
+            Test notification
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }

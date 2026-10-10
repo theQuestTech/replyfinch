@@ -23,6 +23,8 @@ import {
 import type { Agent } from '@replyfinch/shared';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { unlockAudio } from '../lib/notify';
+import { NotificationBanner } from './NotificationBanner';
 import { setAgentStatus, useRealtime } from '../lib/realtime';
 import { useDesk } from '../lib/store';
 import { initials } from '../lib/format';
@@ -40,6 +42,18 @@ const NAV = [
   { to: '/reports', label: 'Reports', icon: ChartColumn },
   { to: '/help-center', label: 'Help center', icon: BookOpen },
 ];
+
+/** "(3) Replyfinch": waiting chats + unread messages, visible from any browser tab. */
+function useTabTitle() {
+  const count = useDesk(
+    (s) =>
+      Object.values(s.conversations).filter((c) => c.status === 'waiting').length +
+      Object.values(s.unread).reduce((a, b) => a + b, 0),
+  );
+  useEffect(() => {
+    document.title = count > 0 ? `(${count}) Replyfinch` : 'Replyfinch';
+  }, [count]);
+}
 
 const SIDEBAR_KEY = 'rf_sidebar_expanded';
 const SHORTCUT = /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘B' : 'Ctrl B';
@@ -85,6 +99,8 @@ export function Shell() {
   const active = useDesk((s) => s.active);
   const waiting = useDesk((s) => Object.values(s.conversations).filter((c) => c.status === 'waiting').length);
   const { expanded, toggle } = useSidebar();
+  useTabTitle();
+  useEffect(() => unlockAudio(), []);
 
   const item = (isActive: boolean) =>
     clsx(
@@ -149,6 +165,7 @@ export function Shell() {
 
       <div className="relative flex min-w-0 flex-1 flex-col">
         <TopBar />
+        <NotificationBanner />
         <main className="relative min-h-0 flex-1 overflow-auto">
           {active?.mode === 'main' ? <ChatWindow key={active.visitorId} visitorId={active.visitorId} mode="main" /> : <Outlet />}
         </main>

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Conversation, LiveVisitor, Message, TeamMember } from '@replyfinch/shared';
+import { useAuth } from './auth';
 
 export type DeskVisitor = LiveVisitor & {
   /** Visitor left the site while their chat window was open — keep showing it. */
@@ -26,6 +27,10 @@ interface DeskState {
   upsertVisitor: (v: LiveVisitor) => void;
   removeVisitor: (id: string) => void;
   upsertConversation: (c: Conversation) => void;
+  /** After (re)connecting: the server's list of open chats replaces ours. */
+  replaceOpenConversations: (list: Conversation[]) => void;
+  /** Bumped on every (re)connect so open windows reload their messages. */
+  connectedAt: number;
   setMessages: (conversationId: string, m: Message[]) => void;
   addMessage: (m: Message) => void;
   setTyping: (conversationId: string, name: string | null) => void;
@@ -41,6 +46,7 @@ interface DeskState {
 
 const initial = {
   connected: false,
+  connectedAt: 0,
   visitors: {},
   conversations: {},
   messages: {},
@@ -54,7 +60,19 @@ const initial = {
 export const useDesk = create<DeskState>((set, get) => ({
   ...initial,
 
-  setConnected: (connected) => set({ connected }),
+  setConnected: (connected) => set(connected ? { connected, connectedAt: Date.now() } : { connected }),
+
+  replaceOpenConversations: (list) =>
+    set((s) => {
+      const conversations: Record<string, Conversation> = {};
+      // Keep ended chats we already know (open windows still show them)...
+      for (const c of Object.values(s.conversations)) if (c.status === 'ended') conversations[c.id] = c;
+      // ...and mark chats that ended while we were offline as ended.
+      const open = new Set(list.map((c) => c.id));
+      for (const c of Object.values(s.conversations)) if (c.status !== 'ended' && !open.has(c.id)) conversations[c.id] = { ...c, status: 'ended' };
+      for (const c of list) conversations[c.id] = c;
+      return { conversations };
+    }),
 
   setVisitors: (list) =>
     set((s) => {
@@ -90,8 +108,11 @@ export const useDesk = create<DeskState>((set, get) => ({
       const conv = s.conversations[m.conversationId];
       const visitorId = conv?.visitorId;
       const viewing = visitorId && s.active?.visitorId === visitorId && document.visibilityState === 'visible';
+      // Count unread only for chats that concern me: open in my dock, mine, or still waiting for anyone.
+      const me = useAuth.getState().agent?.id ?? '';
+      const concernsMe = !!visitorId && (s.openTabs.includes(visitorId) || conv?.status === 'waiting' || !!conv?.participantIds.includes(me));
       const unread =
-        visitorId && m.authorType === 'visitor' && !viewing
+        visitorId && m.authorType === 'visitor' && !viewing && concernsMe
           ? { ...s.unread, [visitorId]: (s.unread[visitorId] ?? 0) + 1 }
           : s.unread;
       const typing = m.authorType === 'visitor' ? { ...s.typing, [m.conversationId]: null } : s.typing;
@@ -125,6 +146,8 @@ export const useDesk = create<DeskState>((set, get) => ({
   closeChat: (visitorId) =>
     set((s) => {
       const openTabs = s.openTabs.filter((id) => id !== visitorId);
+      const unread = { ...s.unread };
+      delete unread[visitorId];
       const visitors = { ...s.visitors };
       if (visitors[visitorId]?.left) delete visitors[visitorId];
       const active =
@@ -133,7 +156,7 @@ export const useDesk = create<DeskState>((set, get) => ({
             ? { visitorId: openTabs[openTabs.length - 1]!, mode: 'main' as const }
             : null
           : s.active;
-      return { openTabs, visitors, active };
+      return { openTabs, visitors, active, unread };
     }),
 
   reset: () => set({ ...initial }),

@@ -1,8 +1,7 @@
 import clsx from 'clsx';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  Bell,
   BookOpen,
   Bird,
   ChartColumn,
@@ -14,7 +13,6 @@ import {
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
-  Plus,
   Search,
   SlidersHorizontal,
   Ticket,
@@ -37,11 +35,11 @@ const NAV = [
   { to: '/', label: 'Home', icon: House, end: true, badge: 'waiting' as const },
   { to: '/visitors', label: 'Visitors', icon: Eye },
   { to: '/inbox', label: 'Inbox', icon: Inbox, badge: 'offline' as const },
-  { to: '/tickets', label: 'Tickets', icon: Ticket },
+  { to: '/tickets', label: 'Tickets', icon: Ticket, soon: true },
   { to: '/customers', label: 'Customers', icon: Users },
   { to: '/history', label: 'History', icon: History },
   { to: '/reports', label: 'Reports', icon: ChartColumn },
-  { to: '/help-center', label: 'Help center', icon: BookOpen },
+  { to: '/help-center', label: 'Help center', icon: BookOpen, soon: true },
 ];
 
 /** "(3) Replyfinch": waiting chats + unread messages, visible from any browser tab. */
@@ -57,6 +55,26 @@ function useTabTitle() {
 }
 
 const SIDEBAR_KEY = 'rf_sidebar_expanded';
+const SEARCH_KEY = /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘K' : 'Ctrl K';
+
+/** Close a popup menu on a click outside it or on Escape. */
+function useDismiss<T extends HTMLElement>(open: boolean, close: () => void) {
+  const ref = useRef<T>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, close]);
+  return ref;
+}
 const SHORTCUT = /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘B' : 'Ctrl B';
 
 function useSidebar() {
@@ -128,10 +146,11 @@ export function Shell() {
           </div>
           {expanded && <span className="text-[17px] font-bold tracking-tight text-white">Replyfinch</span>}
         </div>
-        {NAV.map(({ to, label, icon: Icon, end, badge }) => (
+        {NAV.map(({ to, label, icon: Icon, end, badge, soon }) => (
           <NavLink key={to} to={to} end={end} title={expanded ? undefined : label} aria-label={label} className={({ isActive }) => item(isActive)}>
             <Icon className="size-5 shrink-0" />
             {expanded && <span className="truncate text-sm font-medium">{label}</span>}
+            {expanded && soon && <span className="ml-auto rounded bg-navy-2 px-1.5 text-[10px] font-semibold text-on-navy">Soon</span>}
             {badge && badges[badge] > 0 && (
               <span
                 className={clsx(
@@ -188,9 +207,10 @@ function MeMenu({ expanded }: { expanded: boolean }) {
   const logout = useAuth((s) => s.logout);
   const me = useDesk((s) => s.team.find((t) => t.id === agent?.id));
   const [open, setOpen] = useState(false);
+  const menu = useDismiss<HTMLDivElement>(open, () => setOpen(false));
   const status = me?.status ?? 'online';
   return (
-    <div className="relative mt-1.5">
+    <div className="relative mt-1.5" ref={menu}>
       <button
         onClick={() => setOpen((o) => !o)}
         className={clsx('flex cursor-pointer items-center gap-3 rounded-[10px] text-left', expanded && 'w-full p-1.5 hover:bg-navy-2/60')}
@@ -231,17 +251,47 @@ function TopBar() {
   const me = useDesk((s) => s.team.find((t) => t.id === agent?.id));
   const status = me?.status ?? 'online';
   const [open, setOpen] = useState(false);
+  const statusMenu = useDismiss<HTMLDivElement>(open, () => setOpen(false));
   const navigate = useNavigate();
+  const [search, setSearch] = useState('');
+  const searchRef = useRef<HTMLInputElement>(null);
+  // ⌘K / Ctrl+K jumps to search.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   return (
     <header className="flex h-16 shrink-0 items-center gap-4 border-b border-line bg-surface px-8">
-      <div className="flex h-10 w-[440px] items-center gap-2.5 rounded-[10px] bg-muted pr-2 pl-3 text-sm text-ink-2">
+      <form
+        role="search"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const q = search.trim();
+          navigate(q ? `/customers?q=${encodeURIComponent(q)}` : '/customers');
+          searchRef.current?.blur();
+        }}
+        className="flex h-10 w-[440px] items-center gap-2.5 rounded-[10px] bg-muted pr-2 pl-3 text-sm text-ink-2 focus-within:ring-2 focus-within:ring-primary-subtle"
+      >
         <Search className="size-4" />
-        <span className="flex-1">Search tickets, customers, articles…</span>
-        <Kbd>⌘K</Kbd>
-      </div>
+        <input
+          ref={searchRef}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search customers by name, email or phone…"
+          aria-label="Quick search"
+          className="flex-1 bg-transparent text-ink outline-none placeholder:text-ink-2"
+        />
+        <Kbd>{SEARCH_KEY}</Kbd>
+      </form>
       <div className="flex-1" />
       {!connected && <span className="text-xs font-medium text-warning">Reconnecting…</span>}
-      <div className="relative">
+      <div className="relative" ref={statusMenu}>
         <button
           onClick={() => setOpen((o) => !o)}
           className={clsx(
@@ -270,15 +320,6 @@ function TopBar() {
           </div>
         )}
       </div>
-      <button className="relative grid size-9 cursor-pointer place-items-center rounded-[10px] border border-line" aria-label="Notifications">
-        <Bell className="size-[18px]" />
-      </button>
-      <button
-        onClick={() => navigate('/tickets')}
-        className="flex cursor-pointer items-center gap-1.5 rounded-[10px] bg-primary py-2 pr-4 pl-3.5 text-sm font-semibold text-white hover:bg-primary/90"
-      >
-        <Plus className="size-4" /> New ticket
-      </button>
     </header>
   );
 }

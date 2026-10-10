@@ -45,4 +45,13 @@ test('Customers lists people who chatted; the profile shows their chats and can 
   await agent.getByLabel('Tag').selectOption(`nordic-${id}`);
   await expect(agent.getByTestId('customer-list').getByRole('button')).toHaveCount(1);
   await expect(agent.getByTestId('customer-list')).toContainText(name);
+
+  // Quick search in the top bar (Ctrl/⌘+K) finds them from anywhere.
+  await agent.getByRole('link', { name: 'Home' }).click();
+  await agent.keyboard.press('Control+k');
+  await expect(agent.getByLabel('Quick search')).toBeFocused();
+  await agent.keyboard.type(email);
+  await agent.keyboard.press('Enter');
+  await expect(agent).toHaveURL(/\/customers\?q=/);
+  await expect(agent.getByTestId('customer-list').getByRole('button', { name: new RegExp(name) })).toHaveCount(1);
 });

@@ -207,7 +207,7 @@ export function History() {
           </div>
         </Card>
 
-        {selectedId && <ChatDetail id={selectedId} entry={selected} onClose={() => set({ c: null })} />}
+        {selectedId && <ChatDetail key={selectedId} id={selectedId} entry={selected} onClose={() => set({ c: null })} />}
       </div>
     </div>
   );

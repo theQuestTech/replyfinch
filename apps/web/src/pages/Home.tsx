@@ -1,10 +1,11 @@
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { CircleAlert, Clock, Eye, MessageCircle, Users } from 'lucide-react';
 import { FIRST_REPLY_TARGET_MS, type HomeStats } from '@replyfinch/shared';
 import { api } from '../lib/api';
+import { queryClient } from '../lib/query';
 import { useAuth } from '../lib/auth';
 import { duration, greeting, initials, visitorLabel } from '../lib/format';
 import { useDesk } from '../lib/store';
@@ -24,11 +25,12 @@ export function Home() {
   }, []);
 
   const convList = Object.values(conversations);
-  const stats = useQuery({
-    queryKey: ['stats', 'home', convList.length, convList.filter((c) => c.status === 'waiting').length],
-    queryFn: () => api<HomeStats>('/stats/home'),
-    refetchInterval: 30_000,
-  });
+  const stats = useQuery({ queryKey: ['stats', 'home'], queryFn: () => api<HomeStats>('/stats/home'), refetchInterval: 30_000 });
+  // Refresh the numbers when the queue changes (same cache entry, so the tiles never blank out).
+  const waitingCount = convList.filter((c) => c.status === 'waiting').length;
+  useEffect(() => {
+    void queryClient.invalidateQueries({ queryKey: ['stats', 'home'] });
+  }, [convList.length, waitingCount]);
   const s = stats.data;
   const queue = convList
     .filter((c) => c.status === 'waiting' || (c.status === 'active' && !c.assigneeId))
@@ -54,14 +56,9 @@ export function Home() {
             {visitorsOnline} {visitorsOnline === 1 ? 'person' : 'people'} on your websites right now
           </p>
         </div>
-        <div className="flex gap-0.5 rounded-[10px] bg-muted p-1">
-          <span className="rounded-[7px] bg-surface px-3 py-1.5 text-[13px] font-semibold shadow-sm">Today</span>
-          {['7 days', '30 days'].map((r) => (
-            <span key={r} title="Coming soon" className="px-3 py-1.5 text-[13px] font-medium text-ink-2/60">
-              {r}
-            </span>
-          ))}
-        </div>
+        <Link to="/reports" className="rounded-lg border border-line bg-surface px-3 py-1.5 text-[13px] font-semibold hover:bg-muted">
+          Today · See reports →
+        </Link>
       </div>
 
       <div className="grid grid-cols-4 gap-4">

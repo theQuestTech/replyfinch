@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, ChevronDown, ChevronRight, Globe, Inbox, Mail, MessageCircle, Monitor, Smartphone, Tablet } from 'lucide-react';
 import type { Conversation, CustomerProfile as Profile, Message } from '@replyfinch/shared';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { queryClient } from '../lib/query';
 import { useDesk } from '../lib/store';
@@ -22,10 +22,13 @@ export function CustomerProfile() {
   const online = useDesk((s) => !!s.visitors[id] && !s.visitors[id]!.left);
   const openChat = useDesk((s) => s.openChat);
 
+  const [saveError, setSaveError] = useState<string | null>(null);
   const save = async (p: Patch) => {
     // Show the change right away, then sync with the server.
     queryClient.setQueryData<Profile>(['customer', id], (old) => (old ? { ...old, customer: { ...old.customer, ...p } } : old));
-    await api(`/visitors/${id}`, { method: 'PATCH', body: JSON.stringify(p) }).catch(() => {});
+    await api(`/visitors/${id}`, { method: 'PATCH', body: JSON.stringify(p) })
+      .then(() => setSaveError(null))
+      .catch((e) => setSaveError(e instanceof ApiError && e.status === 400 ? 'That doesn’t look right — please check it.' : 'Couldn’t save. Please try again.'));
     void queryClient.invalidateQueries({ queryKey: ['customer', id] });
     void queryClient.invalidateQueries({ queryKey: ['customers'] });
   };
@@ -86,6 +89,11 @@ export function CustomerProfile() {
             <ProfileField value={c.email} placeholder="Add email" type="email" onSave={(email) => save({ email })} />
             <ProfileField value={c.phone} placeholder="Add phone number" onSave={(phone) => save({ phone })} />
             <ProfileField value={c.notes} placeholder="Add notes" multiline onSave={(notes) => save({ notes })} />
+            {saveError && (
+              <span role="alert" className="text-xs font-medium text-danger">
+                {saveError}
+              </span>
+            )}
           </div>
           <TagEditor tags={c.tags} onChange={(tags) => save({ tags })} />
           <div className="flex flex-col gap-1.5 text-xs">

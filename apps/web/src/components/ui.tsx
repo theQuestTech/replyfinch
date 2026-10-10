@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { useEffect, useRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import type { AgentStatus, VisitorState } from '@replyfinch/shared';
 
 type Tone = 'primary' | 'success' | 'warning' | 'danger' | 'muted' | 'gold';
@@ -139,13 +139,45 @@ export const inputClass =
   'h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none placeholder:text-ink-2 focus:border-primary focus:ring-2 focus:ring-primary-subtle disabled:bg-muted';
 
 export function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  // Latest onClose without re-running the effect (that would steal focus on every render).
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    // Move focus into the dialog (unless a field inside already took it), and give it back afterwards.
+    const before = document.activeElement as HTMLElement | null;
+    if (!ref.current?.contains(document.activeElement)) ref.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        close.current();
+      }
+      if (e.key === 'Tab' && ref.current) {
+        // Keep Tab inside the dialog.
+        const items = [...ref.current.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter(
+          (el) => !el.hasAttribute('disabled'),
+        );
+        if (!items.length) return;
+        const first = items[0]!;
+        const last = items[items.length - 1]!;
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', onKey, true);
+    return () => {
+      document.removeEventListener('keydown', onKey, true);
+      before?.focus?.();
+    };
+  }, []);
   return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-navy/40 p-4"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-      onKeyDown={(e) => e.key === 'Escape' && onClose()}
-    >
-      <div role="dialog" aria-label={title} className="w-full max-w-lg rounded-2xl bg-surface shadow-2xl">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-navy/40 p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} className="w-full max-w-lg rounded-2xl bg-surface shadow-2xl outline-none">
         <div className="flex items-center border-b border-line px-6 py-4">
           <h2 className="flex-1 text-base font-bold">{title}</h2>
           <button onClick={onClose} aria-label="Close" className="cursor-pointer rounded-md px-2 text-xl leading-none text-ink-2 hover:bg-muted">

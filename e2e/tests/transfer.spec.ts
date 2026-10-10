@@ -14,6 +14,11 @@ test('an agent transfers a chat to a teammate with a private note', async ({ bro
   await maya.keyboard.press('Enter');
   await maya.getByRole('button', { name: 'Transfer' }).click();
   const dialog = maya.getByRole('dialog', { name: 'Transfer chat' });
+  // Esc closes just the dialog, not the chat window behind it.
+  await maya.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(maya.getByTestId('chat-window-side')).toBeVisible();
+  await maya.getByRole('button', { name: 'Transfer' }).click();
   await dialog.getByRole('radio', { name: /Daniel Brooks/ }).click();
   await dialog.getByPlaceholder('What have you tried so far?').fill('Double charge on order 4821 — please refund one.');
   await dialog.getByRole('button', { name: 'Transfer', exact: true }).click();

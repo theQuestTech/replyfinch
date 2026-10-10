@@ -1,6 +1,6 @@
 import clsx from 'clsx';
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronUp, Clock, Eye, Globe, List, Map as MapIcon, MessageCircle, Monitor, Search, Smartphone, Tablet } from 'lucide-react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { ChevronDown, ChevronUp, Clock, Eye, Globe, MessageCircle, Monitor, Search, Smartphone, Tablet } from 'lucide-react';
 import type { VisitorState } from '@replyfinch/shared';
 import { duration, referrerHost, shortUrl, visitorLabel } from '../lib/format';
 import { useDesk, type DeskVisitor } from '../lib/store';
@@ -18,7 +18,8 @@ export function Visitors() {
   const openChat = useDesk((s) => s.openChat);
   const [query, setQuery] = useState('');
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [, tick] = useState(0);
+  const [tickN, tick] = useState(0);
+  const openSide = useCallback((id: string) => openChat(id, 'side'), [openChat]);
   useEffect(() => {
     const t = setInterval(() => tick((n) => n + 1), 5000);
     return () => clearInterval(t);
@@ -52,20 +53,9 @@ export function Visitors() {
             browsing · {counts.idle} idle
           </p>
         </div>
-        <div className="flex gap-0.5 rounded-[10px] bg-muted p-1">
-          <span className="flex items-center gap-1.5 rounded-[7px] bg-surface px-3 py-1.5 text-[13px] font-semibold shadow-sm">
-            <List className="size-3.5" /> List
-          </span>
-          <span className="flex items-center gap-1.5 px-3 py-1.5 text-[13px] font-medium text-ink-2" title="Coming soon">
-            <MapIcon className="size-3.5" /> Map
-          </span>
-        </div>
       </div>
 
       <div className="flex items-center gap-2.5">
-        <span className="flex items-center gap-2 rounded-lg border border-line bg-surface py-2 pr-2.5 pl-3 text-[13px] font-medium">
-          Group by: Activity <ChevronDown className="size-3.5 text-ink-2" />
-        </span>
         <div className="flex-1" />
         <label className="flex h-9 w-[260px] items-center gap-2 rounded-lg border border-line bg-surface px-3">
           <Search className="size-3.5 text-ink-2" />
@@ -110,7 +100,7 @@ export function Visitors() {
                 <Pill tone={sec.tone}>{rows.length}</Pill>
               </button>
               {!isCollapsed &&
-                rows.map((v) => <Row key={v.id} v={v} selected={active?.visitorId === v.id} onOpen={() => openChat(v.id, 'side')} />)}
+                rows.map((v) => <Row key={v.id} v={v} selected={active?.visitorId === v.id} onOpen={openSide} tick={tickN} />)}
             </div>
           );
         })}
@@ -119,14 +109,16 @@ export function Visitors() {
   );
 }
 
-function Row({ v, selected, onOpen }: { v: DeskVisitor; selected: boolean; onOpen: () => void }) {
+// Memoized: the list re-renders on every visitor update, but most rows don't change.
+// `tick` changes every 5s so times on site stay current.
+const Row = memo(function Row({ v, selected, onOpen }: { v: DeskVisitor; selected: boolean; onOpen: (id: string) => void; tick: number }) {
   const StateIcon = v.state === 'chatting' ? MessageCircle : v.state === 'idle' ? Clock : Eye;
   const DeviceIcon = v.device === 'mobile' ? Smartphone : v.device === 'tablet' ? Tablet : Monitor;
   const waiting = useDesk((s) => (v.conversationId ? s.conversations[v.conversationId]?.status === 'waiting' : false));
   const unread = useDesk((s) => s.unread[v.id] ?? 0);
   return (
     <div
-      onClick={onOpen}
+      onClick={() => onOpen(v.id)}
       data-testid="visitor-row"
       className={clsx(
         'flex cursor-pointer items-center gap-3 border-b border-line px-5 py-2.5 hover:bg-canvas',
@@ -170,7 +162,7 @@ function Row({ v, selected, onOpen }: { v: DeskVisitor; selected: boolean; onOpe
           variant={v.state === 'chatting' ? (waiting ? 'primary' : 'success') : selected ? 'primary' : 'secondary'}
           onClick={(e) => {
             e.stopPropagation();
-            onOpen();
+            onOpen(v.id);
           }}
         >
           {v.state === 'chatting' ? (waiting ? 'Join chat' : 'Open chat') : 'Start chat'}
@@ -179,4 +171,4 @@ function Row({ v, selected, onOpen }: { v: DeskVisitor; selected: boolean; onOpe
       </span>
     </div>
   );
-}
+});

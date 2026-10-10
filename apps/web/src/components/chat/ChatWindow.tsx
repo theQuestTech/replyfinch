@@ -48,6 +48,7 @@ export function ChatWindow({ visitorId, mode }: { visitorId: string; mode: ChatM
   const typingName = useDesk((s) => (convId ? s.typing[convId] : null));
   const { setMode, minimize, closeChat, upsertConversation, setMessages } = useDesk.getState();
   const [tab, setTab] = useState<Tab>('current');
+  const connectedAt = useDesk((s) => s.connectedAt);
   const [transferring, setTransferring] = useState(false);
 
   // Follow the visitor's current chat; keep showing an ended one until a new one starts.
@@ -70,13 +71,16 @@ export function ChatWindow({ visitorId, mode }: { visitorId: string; mode: ChatM
     return () => {
       s?.emit('conversation:unwatch', { conversationId: convId });
     };
-  }, [convId, upsertConversation, setMessages]);
+  }, [convId, connectedAt, upsertConversation, setMessages]);
 
   // Window shortcuts: Esc minimizes, ⌘/Ctrl+↑ switches side ⇄ main.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement | null)?.closest?.('[role=dialog]')) return; // Esc closes the dialog only
-      if (e.key === 'Escape' && mode === 'side') minimize();
+      if (document.querySelector('[role=dialog]')) return; // a dialog is open: Esc closes just that
+      const t = e.target as HTMLElement | null;
+      // Esc while writing a reply keeps the window (and the draft) open.
+      const writing = (t?.tagName === 'TEXTAREA' || t?.tagName === 'INPUT') && !!(t as HTMLTextAreaElement).value;
+      if (e.key === 'Escape' && mode === 'side' && !writing) minimize();
       if (e.key === 'ArrowUp' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         setMode(mode === 'side' ? 'main' : 'side');
@@ -121,9 +125,6 @@ export function ChatWindow({ visitorId, mode }: { visitorId: string; mode: ChatM
           )}
           {mode === 'side' ? (
             <>
-              <Button>
-                Actions <ChevronDown className="size-3.5 text-ink-2" />
-              </Button>
               <IconButton label="Open in main window (⌘↑)" onClick={() => setMode('main')}>
                 <Maximize2 className="size-4" />
               </IconButton>
@@ -136,9 +137,6 @@ export function ChatWindow({ visitorId, mode }: { visitorId: string; mode: ChatM
             </>
           ) : (
             <>
-              <Button>
-                Actions <ChevronDown className="size-3.5 text-ink-2" />
-              </Button>
               <IconButton label="Pop out to side window (⌘↑)" onClick={() => setMode('side')}>
                 <Minimize2 className="size-4" />
               </IconButton>
@@ -408,8 +406,9 @@ function Composer({
     if (composing) return;
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-      if (t?.closest?.('[role=dialog]')) return; // typing in a dialog (e.g. Transfer)
+      // (A focused button is fine: clicking "Accept" then typing is how agents join.)
+      if (t && (['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName) || t.isContentEditable)) return;
+      if (document.querySelector('[role=dialog]')) return; // typing in a dialog (e.g. Transfer)
       if (e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1) return;
       e.preventDefault();
       setText(e.key);
@@ -681,6 +680,7 @@ function ToolbarButton({
 function PastChats({ visitorId, currentId, meId }: { visitorId: string; currentId: string | null; meId: string }) {
   const [list, setList] = useState<Conversation[] | null>(null);
   const [selected, setSelected] = useState<{ conversation: Conversation; messages: Message[] } | null>(null);
+  const [loadError, setLoadError] = useState(false);
   useEffect(() => {
     api<Conversation[]>(`/visitors/${visitorId}/conversations`)
       .then((l) => setList(l.filter((c) => c.id !== currentId)))
@@ -699,11 +699,16 @@ function PastChats({ visitorId, currentId, meId }: { visitorId: string; currentI
     <div className="flex-1 overflow-y-auto bg-canvas p-5">
       {list === null && <div className="text-sm text-ink-2">Loading…</div>}
       {list?.length === 0 && <div className="text-sm text-ink-2">No past chats.</div>}
+      {loadError && <div className="mb-2 text-sm text-danger">Couldn’t open that chat. Please try again.</div>}
       <div className="flex flex-col gap-2">
         {list?.map((c) => (
           <button
             key={c.id}
-            onClick={() => api<{ conversation: Conversation; messages: Message[] }>(`/conversations/${c.id}`).then(setSelected)}
+            onClick={() =>
+              api<{ conversation: Conversation; messages: Message[] }>(`/conversations/${c.id}`)
+                .then(setSelected)
+                .catch(() => setLoadError(true))
+            }
             className="flex cursor-pointer items-center justify-between rounded-lg border border-line bg-surface px-3 py-2.5 text-left hover:border-primary"
           >
             <div>

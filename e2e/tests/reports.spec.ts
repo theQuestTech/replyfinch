@@ -12,7 +12,7 @@ test('Reports shows chat totals, charts and the team, for 7/30/90 days', async (
   await agent.keyboard.press('Enter');
   await agent.keyboard.press('Escape');
 
-  await agent.getByRole('link', { name: 'Reports' }).click();
+  await agent.getByRole('link', { name: 'Reports', exact: true }).click();
   await expect(agent.getByRole('heading', { name: 'Reports' })).toBeVisible();
   const chats = agent.getByTestId('tile-Chats');
   await expect(chats).not.toHaveText('0');

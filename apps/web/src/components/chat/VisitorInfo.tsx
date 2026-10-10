@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Eye, Globe, House, Link2, Monitor, Smartphone, Tablet, X } from 'lucide-react';
-import { api } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
 import { duration, initials, localTime, referrerHost, visitorLabel } from '../../lib/format';
 import { useDesk, type DeskVisitor } from '../../lib/store';
 import { Avatar, SectionLabel } from '../ui';
@@ -10,7 +10,11 @@ import { Avatar, SectionLabel } from '../ui';
 type Patch = Partial<Pick<DeskVisitor, 'name' | 'email' | 'phone' | 'notes' | 'tags'>>;
 
 export function VisitorInfo({ visitor, width }: { visitor: DeskVisitor; width: number }) {
-  const save = (p: Patch) => api(`/visitors/${visitor.id}`, { method: 'PATCH', body: JSON.stringify(p) }).catch(() => {});
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const save = (p: Patch) =>
+    api(`/visitors/${visitor.id}`, { method: 'PATCH', body: JSON.stringify(p) })
+      .then(() => setSaveError(null))
+      .catch((e) => setSaveError(e instanceof ApiError && e.status === 400 ? 'That doesn’t look right — please check it.' : 'Couldn’t save. Please try again.'));
   const local = localTime(visitor.timezone);
   const DeviceIcon = visitor.device === 'mobile' ? Smartphone : visitor.device === 'tablet' ? Tablet : Monitor;
   const now = Date.now();
@@ -32,6 +36,11 @@ export function VisitorInfo({ visitor, width }: { visitor: DeskVisitor; width: n
         <ProfileField value={visitor.email} placeholder="Add email" type="email" onSave={(email) => save({ email })} />
         <ProfileField value={visitor.phone} placeholder="Add phone number" onSave={(phone) => save({ phone })} />
         <ProfileField value={visitor.notes} placeholder="Add visitor notes" multiline onSave={(notes) => save({ notes })} />
+        {saveError && (
+          <span role="alert" className="text-xs font-medium text-danger">
+            {saveError}
+          </span>
+        )}
       </div>
 
       <TagEditor tags={visitor.tags} onChange={(tags) => save({ tags })} />

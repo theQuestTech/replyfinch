@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Agent } from '@replyfinch/shared';
+import { queryClient } from './query';
 
 const KEY = 'rf_agent_session';
 
@@ -24,6 +25,8 @@ function load(): Pick<AuthState, 'token' | 'agent'> {
 export const useAuth = create<AuthState>((set) => ({
   ...load(),
   login: (token, agent) => {
+    // Another person (or account) signing in must never see the previous one's cached data.
+    if (useAuth.getState().agent?.id !== agent.id) queryClient.clear();
     try {
       localStorage.setItem(KEY, JSON.stringify({ token, agent }));
     } catch {
@@ -42,6 +45,7 @@ export const useAuth = create<AuthState>((set) => ({
     });
   },
   logout: () => {
+    queryClient.clear();
     try {
       localStorage.removeItem(KEY);
     } catch {

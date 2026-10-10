@@ -40,10 +40,10 @@ function replyLink(m: OfflineMessage) {
 
 export function Inbox() {
   const [params, setParams] = useSearchParams();
-  const filter = (params.get('f') as Filter | null) ?? 'new';
+  const filter: Filter = FILTERS.some((f) => f.id === params.get('f')) ? (params.get('f') as Filter) : 'new';
   const selectedId = params.get('m');
   const { data: count = 0 } = useOfflineCount();
-  const { data: list = [], isLoading } = useQuery({
+  const { data: list = [], isLoading, isError } = useQuery({
     queryKey: ['offline', 'list', filter],
     queryFn: () => api<OfflineMessage[]>(`/offline-messages${filter === 'all' ? '' : `?status=${filter}`}`),
   });
@@ -95,7 +95,8 @@ export function Inbox() {
             ))}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto" data-testid="offline-list">
-            {!isLoading && list.length === 0 && (
+            {isError && <div className="p-8 text-center text-sm text-danger">Couldn’t load messages.</div>}
+            {!isLoading && !isError && list.length === 0 && (
               <div className="grid h-full place-items-center p-8 text-center text-sm text-ink-2">
                 <div>
                   <InboxIcon className="mx-auto mb-2 size-7 text-ink-2/60" />
@@ -128,7 +129,7 @@ export function Inbox() {
 
         <Card className="flex min-w-0 flex-1 flex-col">
           {selected ? (
-            <MessageDetail m={selected} />
+            <MessageDetail key={selected.id} m={selected} />
           ) : (
             <div className="grid h-full place-items-center text-sm text-ink-2">Select a message to read it.</div>
           )}
@@ -198,7 +199,7 @@ function MessageDetail({ m }: { m: OfflineMessage }) {
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5">
         <div className="flex flex-wrap gap-2 text-xs text-ink-2">
           {m.department && <Pill>{m.department}</Pill>}
-          {m.pageUrl && (
+          {m.pageUrl && /^https?:\/\//i.test(m.pageUrl) && (
             <a href={m.pageUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 hover:text-ink hover:underline">
               <Globe className="size-3.5" /> Sent from {shortUrl(m.pageUrl)}
             </a>

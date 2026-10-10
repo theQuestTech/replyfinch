@@ -33,7 +33,7 @@ export function useRealtime() {
       desk.setConnected(true);
       // Open chats (waiting + active) for the live queue and visitor windows.
       api<Conversation[]>('/conversations')
-        .then((list) => list.forEach((c) => useDesk.getState().upsertConversation(c)))
+        .then((list) => useDesk.getState().replaceOpenConversations(list))
         .catch(() => {});
     });
     s.on('disconnect', () => desk.setConnected(false));

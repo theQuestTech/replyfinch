@@ -6,11 +6,14 @@ import {
   customersQuerySchema,
   historyQuerySchema,
   loginSchema,
+  offlineReplySchema,
   offlineStatusSchema,
+  transcriptEmailSchema,
   reportQuerySchema,
   visitorPatchSchema,
   widgetSessionSchema,
   type Agent,
+  type EmailStatus,
   type WidgetConfig,
 } from '@replyfinch/shared';
 import { checkPassword, createAuth, type AgentClaims } from './auth';
@@ -28,6 +31,8 @@ import { createOfflineService } from './services/offline';
 import { createWidgetSettingsService } from './services/widget-settings';
 import { createReportService } from './services/reports';
 import { createCustomerService } from './services/customers';
+import { createMailActions } from './services/mail-actions';
+import { createLogMailer, createMailer, EmailError, type Mailer } from './email';
 import { settingsRoutes } from './routes/settings';
 
 declare module 'fastify' {
@@ -36,7 +41,7 @@ declare module 'fastify' {
   }
 }
 
-export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
+export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?: Mailer } = {}) {
   const app = Fastify({ logger: env.NODE_ENV === 'development' ? { level: 'info' } : env.NODE_ENV === 'production' });
   const { db, sql } = createDb(env.DATABASE_URL);
   const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 3 });
@@ -51,6 +56,9 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
   const widgetSettings = createWidgetSettingsService(db);
   const reports = createReportService(db);
   const customers = createCustomerService(db, history, offline);
+  const logMailer = env.EMAIL_TRANSPORT === 'log' && env.NODE_ENV !== 'production' ? createLogMailer(env.EMAIL_FROM ?? 'Replyfinch <dev@replyfinch.dev>') : null;
+  const mailer = opts.mailer ?? logMailer ?? createMailer({ apiKey: env.RESEND_API_KEY, from: env.EMAIL_FROM, replyTo: env.EMAIL_REPLY_TO });
+  const mail = createMailActions({ mailer, conversations, offline, widgetSettings });
 
   // Never send internal details (SQL, stack traces) to clients; log them instead.
   app.setErrorHandler((err: Error & { statusCode?: number }, req, reply) => {
@@ -78,6 +86,7 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
     presence,
     conversations,
     offline,
+    mail,
     visitors,
     stats,
     corsOrigins: env.corsOrigins,
@@ -100,6 +109,9 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
 
   // `version` is the deployed commit (Railway sets RAILWAY_GIT_COMMIT_SHA), to check a deploy went out.
   const version = process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? null;
+  // Development only: emails "sent" by the log mailer.
+  if (logMailer) app.get('/dev/outbox', async () => logMailer.outbox);
+
   app.get('/health', async () => ({ ok: true, version }));
 
   // ---------------- auth ----------------
@@ -167,6 +179,53 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
       return offline.list(req.agent.acc, status);
     });
 
+    r.get<{ Params: { id: string } }>('/offline-messages/:id/replies', async (req) => offline.replies(req.agent.acc, req.params.id));
+
+    r.post<{ Params: { id: string } }>('/offline-messages/:id/reply', async (req, reply) => {
+      const body = offlineReplySchema.safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: 'invalid_input' });
+      try {
+        const res = await mail.replyToOffline(req.agent.acc, req.params.id, { id: req.agent.sub, name: req.agent.name }, body.data.body);
+        if (!res) return reply.code(404).send({ error: 'not_found' });
+        realtime.offlineChanged(req.agent.acc, res.message);
+        return res;
+      } catch (err) {
+        if (err instanceof EmailError) return reply.code(502).send({ error: err.message });
+        throw err;
+      }
+    });
+
+    r.post<{ Params: { id: string } }>('/conversations/:id/transcript', async (req, reply) => {
+      const body = transcriptEmailSchema.safeParse(req.body ?? {});
+      if (!body.success) return reply.code(400).send({ error: 'invalid_input' });
+      const conv = await conversations.get(req.agent.acc, req.params.id);
+      if (!conv) return reply.code(404).send({ error: 'not_found' });
+      const v = await visitors.get(req.agent.acc, conv.visitorId);
+      const to = body.data.to ?? v?.email;
+      if (!to) return reply.code(400).send({ error: 'This customer has no email address' });
+      try {
+        const note = await mail.sendTranscript(req.agent.acc, conv, to, v?.name ?? null, { id: req.agent.sub, name: req.agent.name });
+        realtime.announce(req.agent.acc, note);
+        return { to };
+      } catch (err) {
+        if (err instanceof EmailError) return reply.code(502).send({ error: err.message });
+        throw err;
+      }
+    });
+
+    r.get('/settings/email', async () => ({ enabled: mailer.enabled, from: mailer.from, replyTo: mailer.replyTo }) satisfies EmailStatus);
+
+    r.post('/settings/email/test', async (req, reply) => {
+      const [me] = await db.select({ email: users.email }).from(users).where(eq(users.id, req.agent.sub));
+      try {
+        await mail.sendTest(req.agent.acc, me!.email);
+        return { to: me!.email };
+      } catch (err) {
+        if (err instanceof EmailError) return reply.code(502).send({ error: err.message });
+        throw err;
+      }
+    });
+
     r.get('/offline-messages/count', async (req) => ({ new: await offline.countNew(req.agent.acc) }));
 
     r.patch<{ Params: { id: string } }>('/offline-messages/:id', async (req, reply) => {
@@ -231,6 +290,7 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
         ...(await widgetSettings.get(account.id)),
         accountName: account.name,
         agentsOnline: team.filter((t) => t.status === 'online').length,
+        emailTranscripts: mailer.enabled,
       } satisfies WidgetConfig,
     };
   });

@@ -1,14 +1,15 @@
 import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { History as HistoryIcon, Mail, MessageCircle, Search, X } from 'lucide-react';
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
+import { History as HistoryIcon, Mail, MessageCircle, Search, Send, X } from 'lucide-react';
 import type { Conversation, HistoryEntry, HistoryPage, Message } from '@replyfinch/shared';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
+import { useEmailStatus } from '../lib/email';
 import { useAuth } from '../lib/auth';
 import { useDesk } from '../lib/store';
 import { dateTime, duration, initials, visitorLabel } from '../lib/format';
-import { Avatar, Card, IconButton, Pill, RatingPill } from '../components/ui';
+import { Avatar, Button, Card, Field, IconButton, inputClass, Modal, Pill, RatingPill } from '../components/ui';
 import { Transcript } from '../components/chat/Transcript';
 
 const PERIODS = [
@@ -225,9 +226,23 @@ function ChatDetail({ id, entry, onClose }: { id: string; entry: HistoryEntry | 
     return !!v && !v.left;
   });
   const openChat = useDesk((s) => s.openChat);
+  const { data: email } = useEmailStatus();
+  const [emailing, setEmailing] = useState(false);
+  const [sentTo, setSentTo] = useState<string | null>(null);
 
   return (
     <Card className="flex w-[460px] shrink-0 flex-col">
+      {emailing && c && (
+        <TranscriptModal
+          conversationId={c.id}
+          initial={entry?.visitorEmail ?? ''}
+          onClose={() => setEmailing(false)}
+          onSent={(to) => {
+            setEmailing(false);
+            setSentTo(to);
+          }}
+        />
+      )}
       <div className="flex items-start gap-3 border-b border-line px-5 py-4" data-testid="history-detail">
         <Avatar text={initials(c?.visitorName ?? entry?.visitorName)} size={40} />
         <div className="min-w-0 flex-1">
@@ -248,12 +263,22 @@ function ChatDetail({ id, entry, onClose }: { id: string; entry: HistoryEntry | 
               <RatingPill rating={c.rating} />
             </div>
           )}
+          {sentTo && (
+            <div role="status" className="mt-2 text-xs font-medium text-success">
+              Transcript sent to {sentTo}
+            </div>
+          )}
           {c?.ratingComment && (
             <div className="mt-2 rounded-lg bg-canvas px-3 py-2 text-xs text-ink" data-testid="rating-comment">
               “{c.ratingComment}”
             </div>
           )}
         </div>
+        {email?.enabled && c && (
+          <IconButton label="Email transcript" onClick={() => setEmailing(true)}>
+            <Send className="size-4" />
+          </IconButton>
+        )}
         {online && (
           <IconButton label="Chat with this visitor" onClick={() => c && openChat(c.visitorId, 'side')}>
             <MessageCircle className="size-4" />
@@ -269,5 +294,51 @@ function ChatDetail({ id, entry, onClose }: { id: string; entry: HistoryEntry | 
         <Transcript messages={data?.messages ?? []} meId={me} empty={<div className="m-auto text-sm text-ink-2">Loading…</div>} />
       )}
     </Card>
+  );
+}
+
+function TranscriptModal({
+  conversationId,
+  initial,
+  onClose,
+  onSent,
+}: {
+  conversationId: string;
+  initial: string;
+  onClose: () => void;
+  onSent: (to: string) => void;
+}) {
+  const [to, setTo] = useState(initial);
+  const send = useMutation({
+    mutationFn: () => api<{ to: string }>(`/conversations/${conversationId}/transcript`, { method: 'POST', body: JSON.stringify({ to: to.trim() }) }),
+    onSuccess: (r) => onSent(r.to),
+  });
+  return (
+    <Modal title="Email transcript" onClose={onClose}>
+      <form
+        className="flex flex-col gap-4 px-6 py-5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          send.mutate();
+        }}
+      >
+        <Field label="Send a copy of this chat to" hint="Internal notes aren’t included.">
+          <input className={inputClass} type="email" required autoFocus value={to} onChange={(e) => setTo(e.target.value)} />
+        </Field>
+        {send.isError && (
+          <div role="alert" className="text-sm font-medium text-danger">
+            Couldn’t send: {send.error instanceof ApiError ? send.error.message : 'please try again'}
+          </div>
+        )}
+        <div className="flex justify-end gap-2">
+          <Button type="button" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" type="submit" disabled={!to.trim() || send.isPending}>
+            {send.isPending ? 'Sending…' : 'Send'}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

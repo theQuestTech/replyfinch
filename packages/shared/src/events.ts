@@ -25,6 +25,8 @@ export interface VisitorClientEvents {
   'message:send': (p: { conversationId: string; body: string; clientId: string }, ack: Ack<Message>) => void;
   typing: (p: { conversationId: string; isTyping: boolean }) => void;
   'chat:end': (p: { conversationId: string }) => void;
+  /** Email the visitor a copy of an ended chat. */
+  'chat:transcript': (p: { conversationId: string; email: string }, ack: Ack<{ to: string }>) => void;
   /** Rate an ended chat (again to change the rating). */
   'chat:rate': (p: { conversationId: string; rating: 'good' | 'bad'; comment?: string }, ack: Ack<{ ok: true }>) => void;
   /** Leave a message while no agent is online. */

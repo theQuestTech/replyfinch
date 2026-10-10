@@ -97,6 +97,8 @@ class ReplyfinchWidget {
   private formDirty = false;
   /** Rating an ended chat: which chat, and how far the visitor got. */
   private rating: { conversationId: string; value: 'good' | 'bad'; step: 'comment' | 'done' } | null = null;
+  /** "Email me a copy" of an ended chat: open form, or where it was sent. */
+  private transcript: { conversationId: string; open: boolean; sentTo: string | null } | null = null;
   /** Set after a message was left: { name, email } for the thank-you note. */
   private offlineSent: { name: string; email: string } | null = null;
 
@@ -579,8 +581,61 @@ class ReplyfinchWidget {
     this.body.append(box);
   }
 
+  /** After a chat: offer to email the visitor a copy (only when the account has email set up). */
+  private renderTranscript() {
+    const conv = this.conversation;
+    if (!conv || !this.config?.emailTranscripts || !this.socket) return;
+    const t = this.transcript?.conversationId === conv.id ? this.transcript : null;
+    const box = el('div', { class: 'rate', 'data-rf': 'transcript' });
+    if (t?.sentTo) {
+      const done = el('div', { class: 'rate-title' });
+      done.append('✉️ Sent a copy to ', el('b', {}, escapeHtml(t.sentTo)));
+      box.append(done);
+    } else if (!t?.open) {
+      const b = el('button', { class: 'btn ghost' }, '✉️ Email me a copy of this chat');
+      b.addEventListener('click', () => {
+        this.transcript = { conversationId: conv.id, open: true, sentTo: null };
+        this.render();
+      });
+      box.append(b);
+    } else {
+      const f = el('form', { class: 'rate-row' }) as HTMLFormElement;
+      const input = el('input', { type: 'email', required: '', placeholder: 'you@example.com', 'aria-label': 'Your email', autocomplete: 'email' }) as HTMLInputElement;
+      if (this.visitorEmail) input.value = this.visitorEmail;
+      const send = el('button', { class: 'btn', type: 'submit' }, 'Send') as HTMLButtonElement;
+      const err = el('div', { class: 'error' });
+      f.append(input, send);
+      f.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        send.disabled = true;
+        err.textContent = '';
+        const to = input.value.trim();
+        const res = await this.socket!.timeout(15_000)
+          .emitWithAck('chat:transcript', { conversationId: conv.id, email: to })
+          .catch(() => ({ ok: false as const, error: 'timeout' }));
+        send.disabled = false;
+        if (!res.ok) {
+          err.textContent =
+            res.error === 'rate_limited'
+              ? "We've already sent a few copies — please check your inbox."
+              : res.error === 'invalid_input'
+                ? 'Please check the email address.'
+                : "Sorry, we couldn't send it right now.";
+          return;
+        }
+        this.visitorEmail ??= to;
+        this.transcript = { conversationId: conv.id, open: false, sentTo: res.data.to };
+        this.render();
+      });
+      box.append(el('div', { class: 'rate-title' }, 'Where should we send it?'), f, err);
+      setTimeout(() => input.focus(), 0);
+    }
+    this.body.append(box);
+  }
+
   private renderEnded() {
     this.renderRating();
+    this.renderTranscript();
     const c = el('div', { class: 'composer' });
     const again = el('button', { class: 'btn', style: 'width:100%' }, 'Start a new chat');
     again.addEventListener('click', () => {

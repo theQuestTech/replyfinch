@@ -5,6 +5,7 @@ import type { Redis } from 'ioredis';
 import {
   chatInitiateSchema,
   chatRateSchema,
+  transcriptRequestSchema,
   chatStartSchema,
   chatTransferSchema,
   messageSendSchema,
@@ -26,6 +27,8 @@ import { newId } from './ids';
 import { pushPage, toLiveVisitor, type Presence, type VisitorRecord } from './presence';
 import type { ConversationService } from './services/conversations';
 import type { OfflineService } from './services/offline';
+import type { MailActions } from './services/mail-actions';
+import { EmailError } from './email';
 import type { StatsService } from './services/stats';
 import type { VisitorService } from './services/visitors';
 
@@ -37,6 +40,8 @@ import type { VisitorService } from './services/visitors';
 // declaring them gone.
 const DEFAULT_LEAVE_GRACE_MS = 8000;
 const SWEEP_INTERVAL_MS = 10_000;
+/** A visitor can ask for this many transcripts per hour. */
+const TRANSCRIPTS_PER_HOUR = 3;
 /** A visitor can leave this many offline messages per hour. */
 const OFFLINE_MESSAGES_PER_HOUR = 5;
 
@@ -51,6 +56,7 @@ interface Deps {
   presence: Presence;
   conversations: ConversationService;
   offline: OfflineService;
+  mail: MailActions;
   visitors: VisitorService;
   stats: StatsService;
   corsOrigins: string[];
@@ -274,6 +280,29 @@ export function createRealtime(d: Deps) {
       toAgents(acc).emit('conversation:update', conv);
       for (const m of started.messages) toAgents(acc).emit('message:new', m);
       await syncVisitorConversation(conv);
+    });
+
+    on('chat:transcript', async (...[p, ack]: Parameters<VisitorClientEvents['chat:transcript']>) => {
+      const parsed = transcriptRequestSchema.safeParse(p);
+      if (!parsed.success) return fail(ack, 'invalid_input');
+      const conv = await d.conversations.get(acc, parsed.data.conversationId);
+      if (!conv || conv.visitorId !== vid) return fail(ack, 'not_found');
+      if (conv.status !== 'ended') return fail(ack, 'not_ended');
+      const key = `transcript-rate:${vid}`;
+      const sent = await d.redis.incr(key);
+      if (sent === 1) await d.redis.expire(key, 3600);
+      if (sent > TRANSCRIPTS_PER_HOUR) return fail(ack, 'rate_limited');
+      const v = await d.visitors.get(acc, vid);
+      if (v && !v.email) await d.visitors.patch(acc, vid, { email: parsed.data.email });
+      try {
+        const note = await d.mail.sendTranscript(acc, conv, parsed.data.email, v?.name ?? null, { id: vid, name: v?.name ?? 'Visitor' });
+        ack({ ok: true, data: { to: parsed.data.email } });
+        toAgents(acc).emit('message:new', note);
+      } catch (err) {
+        if (!(err instanceof EmailError)) throw err;
+        console.error('[email] transcript failed:', err.message);
+        fail(ack, 'email_failed');
+      }
     });
 
     on('chat:rate', async (...[p, ack]: Parameters<VisitorClientEvents['chat:rate']>) => {
@@ -569,6 +598,8 @@ export function createRealtime(d: Deps) {
     async disconnectAgent(uid: string) {
       agentsNs.in(`agent:${uid}`).disconnectSockets(true);
     },
+    /** Show a new message (e.g. an agents-only note) to the account's agents. */
+    announce: (acc: string, m: Parameters<AgentServerEvents['message:new']>[0]) => toAgents(acc).emit('message:new', m),
     /** An agent marked an offline message handled (or reopened it). */
     offlineChanged: (acc: string, m: Parameters<AgentServerEvents['offline:update']>[0]) => toAgents(acc).emit('offline:update', m),
     /** Push profile edits made over REST to everyone watching. */

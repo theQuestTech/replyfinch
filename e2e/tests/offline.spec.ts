@@ -39,11 +39,19 @@ test('with nobody online, a visitor leaves a message; an agent finds it in the I
   await expect(detail).toContainText('Can I change the delivery address on my order?');
   await expect(detail).toContainText('Billing');
   await expect(detail).toContainText('On your website now');
-  const reply = detail.getByRole('link', { name: 'Reply by email' });
-  await expect(reply).toHaveAttribute('href', new RegExp(`^mailto:${encodeURIComponent(email)}\\?subject=`));
+  await expect(detail.getByRole('link', { name: 'Open in my email app' })).toHaveAttribute(
+    'href',
+    new RegExp(`^mailto:${encodeURIComponent(email)}\\?subject=`),
+  );
 
-  await detail.getByRole('button', { name: 'Mark as handled' }).click();
+  // Reply from Replyfinch: it's emailed, shown in the thread, and the message is marked handled.
+  await detail.getByLabel('Reply').fill('Yes — just reply with the new address and we’ll update it.');
+  await detail.getByRole('button', { name: 'Send reply' }).click();
+  await expect(detail.getByTestId('offline-reply')).toContainText('just reply with the new address');
   await expect(detail).toContainText('Marked handled by Maya Chen');
+  const outbox = (await (await agent.request.get('http://localhost:4000/dev/outbox')).json()) as { to: string; subject: string; text: string }[];
+  expect(outbox[0]).toMatchObject({ to: email, subject: 'Re: your message to Acme Books' });
+  expect(outbox[0]!.text).toContain('Can I change the delivery address on my order?');
   await expect(row).toHaveCount(0); // gone from "New"
   await agent.getByRole('tab', { name: 'Handled' }).click();
   await expect(agent.getByTestId('offline-list').getByRole('button', { name: new RegExp(name) })).toBeVisible();

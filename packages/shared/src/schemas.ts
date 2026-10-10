@@ -94,6 +94,12 @@ export const customersQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
+export const offlineReplySchema = z.object({ body: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH) });
+
+export const transcriptEmailSchema = z.object({ to: z.email().optional() });
+
+export const transcriptRequestSchema = z.object({ conversationId: z.string().min(1), email: z.email() });
+
 export const MIN_PASSWORD_LENGTH = 10;
 const password = z.string().min(MIN_PASSWORD_LENGTH, `Use at least ${MIN_PASSWORD_LENGTH} characters`).max(200);
 

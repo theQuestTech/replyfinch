@@ -1,7 +1,7 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
-import type { OfflineMessage } from '@replyfinch/shared';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import type { OfflineMessage, OfflineReply } from '@replyfinch/shared';
 import type { Db } from '../db/client';
-import { offlineMessages, users, visitors } from '../db/schema';
+import { offlineMessages, offlineReplies, users, visitors } from '../db/schema';
 import { newId } from '../ids';
 
 type Row = typeof offlineMessages.$inferSelect;
@@ -71,6 +71,28 @@ export function createOfflineService(db: Db) {
         .orderBy(desc(offlineMessages.id))
         .limit(100);
       return Promise.all(rows.map(dto));
+    },
+
+    async get(accountId: string, id: string) {
+      const [row] = await db.select().from(offlineMessages).where(and(eq(offlineMessages.id, id), eq(offlineMessages.accountId, accountId)));
+      return row ?? null;
+    },
+
+    async replies(accountId: string, id: string): Promise<OfflineReply[]> {
+      const rows = await db
+        .select()
+        .from(offlineReplies)
+        .where(and(eq(offlineReplies.offlineMessageId, id), eq(offlineReplies.accountId, accountId)))
+        .orderBy(asc(offlineReplies.createdAt));
+      return rows.map((r) => ({ id: r.id, authorName: r.authorName, body: r.body, to: r.toEmail, createdAt: r.createdAt.getTime() }));
+    },
+
+    async addReply(accountId: string, id: string, author: { id: string; name: string }, to: string, body: string): Promise<OfflineReply> {
+      const [r] = await db
+        .insert(offlineReplies)
+        .values({ id: newId.offlineReply(), accountId, offlineMessageId: id, authorId: author.id, authorName: author.name, toEmail: to, body })
+        .returning();
+      return { id: r!.id, authorName: r!.authorName, body: r!.body, to: r!.toEmail, createdAt: r!.createdAt.getTime() };
     },
 
     async countNew(accountId: string) {

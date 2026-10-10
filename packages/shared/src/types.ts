@@ -133,6 +133,8 @@ export const DEFAULT_WIDGET_SETTINGS: WidgetSettings = {
 export interface WidgetConfig extends WidgetSettings {
   accountName: string;
   agentsOnline: number;
+  /** Email is set up, so visitors can ask for a copy of their chat. */
+  emailTranscripts?: boolean;
 }
 
 /** A saved reply. Agents insert it in the composer with "/name". */
@@ -260,4 +262,19 @@ export interface CustomerProfile {
   offlineMessages: OfflineMessage[];
   /** Most recent pages first. */
   pages: { url: string; title: string; at: number }[];
+}
+
+/** An email an agent sent in answer to an offline message. */
+export interface OfflineReply {
+  id: string;
+  authorName: string;
+  body: string;
+  to: string;
+  createdAt: number;
+}
+
+export interface EmailStatus {
+  enabled: boolean;
+  from: string | null;
+  replyTo: string | null;
 }

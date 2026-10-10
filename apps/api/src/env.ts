@@ -7,6 +7,14 @@ const schema = z.object({
   REDIS_URL: z.string().default('redis://localhost:6379'),
   JWT_SECRET: z.string().min(16).default('dev-only-secret-change-me-please'),
   CORS_ORIGINS: z.string().default('http://localhost:5173,http://localhost:5174'),
+  // Email through Resend (optional). Without these, email features stay hidden.
+  RESEND_API_KEY: z.string().trim().optional(),
+  /** e.g. "Quest Tech <support@quscer.com>" — the domain must be verified in Resend. */
+  EMAIL_FROM: z.string().trim().optional(),
+  /** Where customers' replies go; defaults to EMAIL_FROM. Must be a real mailbox. */
+  EMAIL_REPLY_TO: z.string().trim().optional(),
+  /** Development/tests only: "log" keeps emails in memory (GET /dev/outbox) instead of sending them. */
+  EMAIL_TRANSPORT: z.enum(['resend', 'log']).default('resend'),
 });
 
 const parsed = schema.parse(process.env);

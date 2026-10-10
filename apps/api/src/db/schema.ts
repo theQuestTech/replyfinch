@@ -151,3 +151,19 @@ export const offlineMessages = pgTable(
   },
   (t) => [index('offline_messages_account_idx').on(t.accountId, t.status, t.createdAt)],
 );
+
+/** Emails agents sent in answer to an offline message. */
+export const offlineReplies = pgTable(
+  'offline_replies',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull().references(() => accounts.id),
+    offlineMessageId: text('offline_message_id').notNull().references(() => offlineMessages.id),
+    authorId: text('author_id').references(() => users.id),
+    authorName: text('author_name').notNull(),
+    toEmail: text('to_email').notNull(),
+    body: text('body').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('offline_replies_message_idx').on(t.offlineMessageId, t.createdAt)],
+);

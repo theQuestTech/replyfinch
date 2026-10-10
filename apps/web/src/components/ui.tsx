@@ -95,8 +95,12 @@ export function StatusDot({ status, ring = 'ring-surface', className }: { status
 
 export const stateTone: Record<VisitorState, Tone> = { chatting: 'success', browsing: 'primary', idle: 'muted' };
 
-export function Card({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={clsx('overflow-hidden rounded-xl border border-line bg-surface', className)}>{children}</div>;
+export function Card({ children, className, ...rest }: { children: ReactNode; className?: string; 'data-testid'?: string }) {
+  return (
+    <div {...rest} className={clsx('overflow-hidden rounded-xl border border-line bg-surface', className)}>
+      {children}
+    </div>
+  );
 }
 
 export function SectionLabel({ children }: { children: ReactNode }) {

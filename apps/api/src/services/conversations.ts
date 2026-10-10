@@ -287,6 +287,12 @@ export function createConversationService(db: Db) {
       return { conversation: updated!, messages: out };
     },
 
+    /** A system note only agents see (e.g. "Transcript emailed to …"). */
+    async note(conv: ConvRow, by: { id: string | null; name: string }, body: string) {
+      const n = await insertMessage(conv, { authorType: 'system', authorId: by.id, authorName: by.name, body, internal: true });
+      return messageDto(n.message);
+    },
+
     /** The visitor rates an ended chat. Agents get an internal note in the transcript. */
     async rate(conv: ConvRow, visitorName: string, rating: 'good' | 'bad', comment?: string) {
       const [updated] = await db

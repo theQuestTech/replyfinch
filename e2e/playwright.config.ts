@@ -18,7 +18,14 @@ export default defineConfig({
     launchOptions: process.env.PW_CHROMIUM_PATH ? { executablePath: process.env.PW_CHROMIUM_PATH } : {},
   },
   webServer: [
-    { command: 'pnpm --filter @replyfinch/api dev', url: 'http://localhost:4000/health', reuseExistingServer: true, timeout: 60_000, cwd: '..' },
+    {
+      // Emails are kept in memory (GET /dev/outbox) instead of being sent.
+      command: "EMAIL_TRANSPORT=log EMAIL_FROM='Acme Books <support@acme.test>' pnpm --filter @replyfinch/api dev",
+      url: 'http://localhost:4000/health',
+      reuseExistingServer: true,
+      timeout: 60_000,
+      cwd: '..',
+    },
     { command: 'pnpm --filter @replyfinch/web dev', url: 'http://localhost:5173', reuseExistingServer: true, timeout: 60_000, cwd: '..' },
     { command: 'pnpm --filter @replyfinch/widget dev', url: 'http://localhost:5174', reuseExistingServer: true, timeout: 60_000, cwd: '..' },
   ],

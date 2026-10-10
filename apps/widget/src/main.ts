@@ -3,7 +3,7 @@
 import { io, type Socket } from 'socket.io-client';
 // Import shared code by subpath so the validation library (zod) stays out of the bundle.
 import { HEARTBEAT_INTERVAL_MS } from '@replyfinch/shared/visitor-state';
-import type { Conversation, Message, WidgetConfig } from '@replyfinch/shared/types';
+import { DEFAULT_WIDGET_SETTINGS, type Conversation, type Message, type WidgetConfig } from '@replyfinch/shared/types';
 import type { VisitorClientEvents, VisitorServerEvents } from '@replyfinch/shared/events';
 import { styles } from './styles';
 
@@ -12,13 +12,13 @@ type Sock = Socket<VisitorServerEvents, VisitorClientEvents>;
 const BIRD =
   '<svg viewBox="0 0 24 24" fill="none" stroke="#14213D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7h.01"/><path d="M3.4 18H12a8 8 0 0 0 8-8V7a4 4 0 0 0-7.28-2.3L2 20"/><path d="m20 7 2 .5-2 .5"/><path d="M10 18v3"/><path d="M14 17.75V21"/><path d="M7 18a6 6 0 0 0 3.84-10.61"/></svg>';
 const CHAT =
-  '<svg viewBox="0 0 24 24" fill="none" stroke="#FFC93C" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>';
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>';
 const CLOSE =
   '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
 const POPOUT =
   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>';
 const SEND =
-  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>';
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>';
 
 const store = {
   get(k: string) {
@@ -47,6 +47,15 @@ function newSessionFlag(): boolean {
   }
 }
 
+/** Dark text on light theme colors, white text on dark ones. */
+export function textOn(hex: string): string {
+  const [r, g, b] = [1, 3, 5].map((i) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  }) as [number, number, number];
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4 ? '#121826' : '#FFFFFF';
+}
+
 const cid = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string> = {}, html?: string) {
@@ -71,6 +80,7 @@ class ReplyfinchWidget {
   private isTyping = false;
 
   private root!: ShadowRoot;
+  private wrap!: HTMLDivElement;
   private panel!: HTMLDivElement;
   private body!: HTMLDivElement;
   private badge!: HTMLSpanElement;
@@ -120,8 +130,10 @@ class ReplyfinchWidget {
     };
     this.token = s.visitorToken;
     if (!this.isPopup) store.set(`rf_token_${this.accountId}`, s.visitorToken);
-    this.config = s.config;
+    // Defaults first, so an older API (mid-deploy) still gives a complete config.
+    this.config = { ...DEFAULT_WIDGET_SETTINGS, ...s.config };
     this.agentsOnline = s.config.agentsOnline > 0;
+    this.applyTheme(this.config);
     this.visitorName = s.name;
     this.visitorEmail = s.email;
     this.renderHeader();
@@ -224,7 +236,8 @@ class ReplyfinchWidget {
     this.root = host.attachShadow({ mode: 'open' });
     const style = el('style');
     style.textContent = styles;
-    const wrap = el('div', { class: this.isPopup ? 'rf popup' : 'rf' });
+    const wrap = el('div', { class: this.isPopup ? 'rf popup' : 'rf' }) as HTMLDivElement;
+    this.wrap = wrap;
     this.panel = el('div', { class: 'panel', hidden: '', role: 'dialog', 'aria-label': 'Chat' }) as HTMLDivElement;
     const header = el('div', { class: 'header' });
     header.append(el('div', { class: 'logo' }, BIRD));
@@ -254,6 +267,24 @@ class ReplyfinchWidget {
     wrap.append(this.panel, launcher);
     this.root.append(style, wrap);
     if (this.isPopup) this.toggle(true);
+  }
+
+  /** The account's theme color and bubble position (Settings → Chat widget). */
+  private applyTheme(c: WidgetConfig) {
+    if (c.position === 'left') this.wrap.classList.add('left');
+    if (!c.color) return;
+    const on = textOn(c.color);
+    for (const [k, v] of Object.entries({
+      '--brand': c.color,
+      '--on-brand': on,
+      '--on-brand-2': on === '#FFFFFF' ? 'rgba(255,255,255,.78)' : 'rgba(18,24,38,.72)',
+      '--launcher-icon': on,
+      '--primary': c.color,
+      '--on-primary': on,
+      '--primary-subtle': `${c.color}33`,
+    })) {
+      this.wrap.style.setProperty(k, v);
+    }
   }
 
   /** Move the chat into its own small window that stays open while the visitor browses. */
@@ -340,13 +371,16 @@ class ReplyfinchWidget {
   private renderPrechat() {
     this.typingEl.textContent = '';
     const f = el('form', { class: 'prechat' }) as HTMLFormElement;
-    f.append(el('div', { class: 'intro' }, "Hi there 👋 Tell us a little about you and we'll connect you with the right team."));
+    const cfg = this.config;
+    f.append(el('div', { class: 'intro' }, escapeHtml(cfg?.greeting ?? '')));
     const name = el('input', { name: 'name', required: '', placeholder: 'Your name', autocomplete: 'name' }) as HTMLInputElement;
     if (this.visitorName) name.value = this.visitorName;
-    const email = el('input', { name: 'email', type: 'email', placeholder: 'you@example.com', autocomplete: 'email' }) as HTMLInputElement;
+    const emailAttrs: Record<string, string> = { name: 'email', type: 'email', placeholder: 'you@example.com', autocomplete: 'email' };
+    if (cfg?.emailField === 'required') emailAttrs.required = '';
+    const email = el('input', emailAttrs) as HTMLInputElement;
     if (this.visitorEmail) email.value = this.visitorEmail;
     const dept = el('select', { name: 'department' }) as HTMLSelectElement;
-    for (const d of this.config?.departments ?? []) dept.append(el('option', { value: d }, d));
+    for (const d of cfg?.departments ?? []) dept.append(el('option', { value: d }, escapeHtml(d)));
     const message = el('textarea', { name: 'message', required: '', rows: '3', placeholder: 'How can we help?' }) as HTMLTextAreaElement;
     const label = (t: string, input: HTMLElement) => {
       const l = el('label');
@@ -355,7 +389,10 @@ class ReplyfinchWidget {
     };
     const err = el('div', { class: 'error' });
     const submit = el('button', { class: 'btn', type: 'submit' }, 'Start chat') as HTMLButtonElement;
-    f.append(label('Name', name), label('Email', email), label('Department', dept), label('Message', message), err, submit);
+    f.append(label('Name', name));
+    if (cfg?.emailField !== 'hidden') f.append(label('Email', email));
+    if (cfg?.departments.length) f.append(label('Department', dept));
+    f.append(label('Message', message), err, submit);
     f.addEventListener('input', () => (this.formDirty = true));
     f.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -365,7 +402,7 @@ class ReplyfinchWidget {
       const res = await this.socket.timeout(10_000).emitWithAck('chat:start', {
         name: name.value.trim(),
         email: email.value.trim() || undefined,
-        department: dept.value,
+        department: dept.value || undefined,
         message: message.value.trim(),
         clientId: cid(),
       }).catch(() => ({ ok: false as const, error: 'timeout' }));
@@ -403,13 +440,13 @@ class ReplyfinchWidget {
       return;
     }
     const f = el('form', { class: 'prechat', 'data-rf': 'offline' }) as HTMLFormElement;
-    f.append(el('div', { class: 'intro' }, "We're not online right now. Leave a message and we'll get back to you by email."));
+    f.append(el('div', { class: 'intro' }, escapeHtml(this.config?.offlineGreeting ?? '')));
     const name = el('input', { name: 'name', required: '', placeholder: 'Your name', autocomplete: 'name' }) as HTMLInputElement;
     if (this.visitorName) name.value = this.visitorName;
     const email = el('input', { name: 'email', type: 'email', required: '', placeholder: 'you@example.com', autocomplete: 'email' }) as HTMLInputElement;
     if (this.visitorEmail) email.value = this.visitorEmail;
     const dept = el('select', { name: 'department' }) as HTMLSelectElement;
-    for (const d of this.config?.departments ?? []) dept.append(el('option', { value: d }, d));
+    for (const d of this.config?.departments ?? []) dept.append(el('option', { value: d }, escapeHtml(d)));
     const message = el('textarea', { name: 'message', required: '', rows: '4', placeholder: 'How can we help?' }) as HTMLTextAreaElement;
     const label = (t: string, input: HTMLElement) => {
       const l = el('label');
@@ -418,7 +455,9 @@ class ReplyfinchWidget {
     };
     const err = el('div', { class: 'error' });
     const submit = el('button', { class: 'btn', type: 'submit' }, 'Send message') as HTMLButtonElement;
-    f.append(label('Name', name), label('Email', email), label('Department', dept), label('Message', message), err, submit);
+    f.append(label('Name', name), label('Email', email));
+    if (this.config?.departments.length) f.append(label('Department', dept));
+    f.append(label('Message', message), err, submit);
     f.addEventListener('input', () => (this.formDirty = true));
     f.addEventListener('submit', async (e) => {
       e.preventDefault();

@@ -96,4 +96,6 @@ Create the test database once: `docker compose exec postgres createdb -U replyfi
 - Opening a chat only **views** it. The agent's first message **joins** it (they become the assignee if nobody is), which posts "… joined the chat" to the visitor. Agents can also message a browsing visitor first ("Start chat").
 - When no agent is online (status "Online", not Away), the widget shows a **leave a message** form instead. Messages land in the agent app's **Inbox**; agents reply by email (the button opens their mail app with the reply drafted) and mark them handled. The widget switches between the two live, as agents come and go.
 - **History** lists every chat, newest first, searchable by visitor name, email or anything said, and filterable by status, agent and period.
+- **Transfer** hands an open chat to a teammate (they get it in their dock and join when they type) or back to the queue for a department, with an optional internal note.
+- **Settings → Chat widget** sets the widget's theme color, bubble side, greetings, departments and whether to ask for an email, with a live preview.
 - Presence lives in Redis and Socket.IO uses the Redis adapter, so you can run several API instances behind a load balancer. See `docs/PLAN.md` → *Scaling decisions*.

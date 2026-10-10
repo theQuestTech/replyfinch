@@ -3,13 +3,13 @@ import cors from '@fastify/cors';
 import { Redis } from 'ioredis';
 import { eq } from 'drizzle-orm';
 import {
-  DEFAULT_DEPARTMENTS,
   historyQuerySchema,
   loginSchema,
   offlineStatusSchema,
   visitorPatchSchema,
   widgetSessionSchema,
   type Agent,
+  type WidgetConfig,
 } from '@replyfinch/shared';
 import { checkPassword, createAuth, type AgentClaims } from './auth';
 import { createDb } from './db/client';
@@ -23,6 +23,7 @@ import { createVisitorService } from './services/visitors';
 import { createShortcutService } from './services/shortcuts';
 import { createHistoryService } from './services/history';
 import { createOfflineService } from './services/offline';
+import { createWidgetSettingsService } from './services/widget-settings';
 import { settingsRoutes } from './routes/settings';
 
 declare module 'fastify' {
@@ -43,6 +44,7 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
   const shortcuts = createShortcutService(db);
   const history = createHistoryService(db);
   const offline = createOfflineService(db);
+  const widgetSettings = createWidgetSettingsService(db);
 
   // Never send internal details (SQL, stack traces) to clients; log them instead.
   app.setErrorHandler((err: Error & { statusCode?: number }, req, reply) => {
@@ -107,7 +109,7 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
   // ---------------- agent API ----------------
   app.register(async (r) => {
     r.addHook('preHandler', requireAgent);
-    await settingsRoutes(r, { db, realtime, shortcuts });
+    await settingsRoutes(r, { db, realtime, shortcuts, widgetSettings });
 
     r.get('/me', async (req) => {
       const [u] = await db.select().from(users).where(eq(users.id, req.agent.sub));
@@ -198,10 +200,10 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
       name: v.name,
       email: v.email,
       config: {
+        ...(await widgetSettings.get(account.id)),
         accountName: account.name,
-        departments: DEFAULT_DEPARTMENTS,
         agentsOnline: team.filter((t) => t.status === 'online').length,
-      },
+      } satisfies WidgetConfig,
     };
   });
 

@@ -5,6 +5,7 @@ import type { Redis } from 'ioredis';
 import {
   chatInitiateSchema,
   chatStartSchema,
+  chatTransferSchema,
   messageSendSchema,
   offlineMessageSchema,
   OFFLINE_AFTER_MS,
@@ -433,6 +434,37 @@ export function createRealtime(d: Deps) {
       toAgents(acc).emit('conversation:update', conv);
       for (const m of started.messages) toAgents(acc).emit('message:new', m);
       await syncVisitorConversation(conv);
+      await broadcastTeam(acc);
+    });
+
+    on('chat:transfer', async (...[p, ack]: Parameters<AgentClientEvents['chat:transfer']>) => {
+      const parsed = chatTransferSchema.safeParse(p);
+      if (!parsed.success) return fail(ack, 'invalid_input');
+      const conv = await d.conversations.get(acc, parsed.data.conversationId);
+      if (!conv) return fail(ack, 'not_found');
+      if (conv.status === 'ended') return fail(ack, 'conversation_ended');
+      let target: { agent: { id: string; name: string } } | { department: string };
+      if (parsed.data.toAgentId) {
+        if (parsed.data.toAgentId === uid) return fail(ack, 'invalid_input');
+        const member = (await d.stats.team(acc)).find((t) => t.id === parsed.data.toAgentId);
+        if (!member) return fail(ack, 'not_found');
+        if (member.status === 'offline') return fail(ack, 'agent_offline');
+        target = { agent: { id: member.id, name: member.name } };
+      } else {
+        target = { department: parsed.data.department! };
+      }
+      const res = await d.conversations.transfer(conv, { id: uid, name }, target, parsed.data.note || undefined);
+      const dto = await d.conversations.dto(res.conversation);
+      ack({ ok: true, data: dto });
+      for (const m of res.messages) {
+        toAgents(acc).emit('message:new', m);
+        if (!m.internal) toVisitor(conv.visitorId).emit('message:new', m);
+      }
+      toAgents(acc).emit('conversation:update', dto);
+      if ('agent' in target) {
+        agentsNs.to(`agent:${target.agent.id}`).emit('chat:transferred', { conversation: dto, fromName: name, note: parsed.data.note || null });
+      }
+      await syncVisitorConversation(dto);
       await broadcastTeam(acc);
     });
 

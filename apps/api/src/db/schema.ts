@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, integer, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import type { WidgetSettings } from '@replyfinch/shared';
 
 // Every tenant-owned table carries account_id so customers can later be split
 // across database clusters ("cells") without a rewrite.
@@ -9,6 +10,8 @@ const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull(
 export const accounts = pgTable('accounts', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
+  /** Chat widget look and questions; null until an admin saves them (defaults apply). */
+  widgetSettings: jsonb('widget_settings').$type<Partial<WidgetSettings>>(),
   createdAt: createdAt(),
 });
 

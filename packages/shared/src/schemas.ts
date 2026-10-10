@@ -49,6 +49,31 @@ export const chatInitiateSchema = z.object({
   clientId: z.string().min(1).max(64),
 });
 
+export const chatTransferSchema = z
+  .object({
+    conversationId: z.string().min(1),
+    toAgentId: z.string().min(1).optional(),
+    department: z.string().trim().min(1).max(60).optional(),
+    note: z.string().trim().max(1000).optional(),
+  })
+  .refine((t) => !!t.toAgentId !== !!t.department, 'Pick an agent or a department');
+
+export const widgetSettingsSchema = z.object({
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, 'Use a color like #2F5BEA')
+    .transform((c) => c.toUpperCase())
+    .nullable(),
+  position: z.enum(['right', 'left']),
+  greeting: z.string().trim().min(1, 'Add a greeting').max(300),
+  offlineGreeting: z.string().trim().min(1, 'Add a message').max(300),
+  departments: z
+    .array(z.string().trim().min(1).max(60))
+    .max(20, 'Up to 20 departments')
+    .refine((d) => new Set(d.map((x) => x.toLowerCase())).size === d.length, 'Each department needs a different name'),
+  emailField: z.enum(['optional', 'required', 'hidden']),
+});
+
 export const MIN_PASSWORD_LENGTH = 10;
 const password = z.string().min(MIN_PASSWORD_LENGTH, `Use at least ${MIN_PASSWORD_LENGTH} characters`).max(200);
 

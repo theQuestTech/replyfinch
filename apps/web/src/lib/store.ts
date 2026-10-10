@@ -31,6 +31,8 @@ interface DeskState {
   setTyping: (conversationId: string, name: string | null) => void;
   setTeam: (t: TeamMember[]) => void;
   openChat: (visitorId: string, mode?: ChatMode) => void;
+  /** Put a chat in the dock (with an unread mark) without opening it. */
+  addTab: (visitorId: string) => void;
   setMode: (mode: ChatMode) => void;
   minimize: () => void;
   closeChat: (visitorId: string) => void;
@@ -108,6 +110,13 @@ export const useDesk = create<DeskState>((set, get) => ({
       active: { visitorId, mode: mode ?? s.active?.mode ?? 'side' },
       unread: { ...s.unread, [visitorId]: 0 },
     })),
+
+  addTab: (visitorId) =>
+    set((s) =>
+      s.openTabs.includes(visitorId)
+        ? {}
+        : { openTabs: [...s.openTabs, visitorId], unread: { ...s.unread, [visitorId]: (s.unread[visitorId] ?? 0) + 1 } },
+    ),
 
   setMode: (mode) => set((s) => (s.active ? { active: { ...s.active, mode } } : {})),
 

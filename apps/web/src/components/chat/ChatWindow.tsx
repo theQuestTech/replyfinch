@@ -30,6 +30,7 @@ import { useDesk, type ChatMode } from '../../lib/store';
 import { Avatar, Button, CountryCode, IconButton, Kbd, Pill } from '../ui';
 import { Transcript, type PendingMessage } from './Transcript';
 import { VisitorInfo } from './VisitorInfo';
+import { TransferModal } from './TransferModal';
 
 type Tab = 'current' | 'past' | 'activity';
 
@@ -47,6 +48,7 @@ export function ChatWindow({ visitorId, mode }: { visitorId: string; mode: ChatM
   const typingName = useDesk((s) => (convId ? s.typing[convId] : null));
   const { setMode, minimize, closeChat, upsertConversation, setMessages } = useDesk.getState();
   const [tab, setTab] = useState<Tab>('current');
+  const [transferring, setTransferring] = useState(false);
 
   // Follow the visitor's current chat; keep showing an ended one until a new one starts.
   useEffect(() => {
@@ -73,6 +75,7 @@ export function ChatWindow({ visitorId, mode }: { visitorId: string; mode: ChatM
   // Window shortcuts: Esc minimizes, ⌘/Ctrl+↑ switches side ⇄ main.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement | null)?.closest?.('[role=dialog]')) return; // Esc closes the dialog only
       if (e.key === 'Escape' && mode === 'side') minimize();
       if (e.key === 'ArrowUp' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
@@ -96,6 +99,7 @@ export function ChatWindow({ visitorId, mode }: { visitorId: string; mode: ChatM
       data-testid={`chat-window-${mode}`}
     >
       {mode === 'main' && <OpenChatsStrip activeId={visitorId} />}
+      {transferring && conversation && <TransferModal conversation={conversation} onClose={() => setTransferring(false)} />}
       <div className={clsx('flex min-h-0 flex-1 flex-col bg-surface', mode === 'main' && 'overflow-hidden rounded-xl border border-line')}>
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-line py-3 pr-4 pl-5">
@@ -109,6 +113,11 @@ export function ChatWindow({ visitorId, mode }: { visitorId: string; mode: ChatM
             <HeaderStatus conversation={conversation} joined={joined} meId={me.id} left={!!visitor.left} />
           </div>
           <div className="flex-1" />
+          {open && (
+            <Button onClick={() => setTransferring(true)}>
+              <ArrowRightLeft className="size-3.5" /> Transfer
+            </Button>
+          )}
           {mode === 'side' ? (
             <>
               <Button>
@@ -126,9 +135,6 @@ export function ChatWindow({ visitorId, mode }: { visitorId: string; mode: ChatM
             </>
           ) : (
             <>
-              <Button disabled title="Coming soon">
-                <ArrowRightLeft className="size-3.5" /> Transfer
-              </Button>
               <Button>
                 Actions <ChevronDown className="size-3.5 text-ink-2" />
               </Button>
@@ -402,6 +408,7 @@ function Composer({
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (t?.closest?.('[role=dialog]')) return; // typing in a dialog (e.g. Transfer)
       if (e.metaKey || e.ctrlKey || e.altKey || e.key.length !== 1) return;
       e.preventDefault();
       setText(e.key);

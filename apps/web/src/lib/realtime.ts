@@ -44,9 +44,10 @@ export function useRealtime() {
     s.on('visitor:update', (v) => useDesk.getState().upsertVisitor(v));
     s.on('visitor:remove', ({ id }) => useDesk.getState().removeVisitor(id));
     s.on('conversation:update', (c) => {
-      const isNew = !useDesk.getState().conversations[c.id];
+      const prev = useDesk.getState().conversations[c.id];
       useDesk.getState().upsertConversation(c);
-      if (isNew && c.status === 'waiting') {
+      // New in the queue — or back in it after a transfer to a department.
+      if (c.status === 'waiting' && (!prev || prev.status !== 'waiting')) {
         const v = useDesk.getState().visitors[c.visitorId];
         const who = c.visitorName ?? (v ? visitorLabel(v) : 'A visitor');
         alertAgent({
@@ -75,6 +76,22 @@ export function useRealtime() {
         viewingThisChat: desk.active?.visitorId === c.visitorId,
         title: m.authorName,
         body: m.body,
+        tag: `chat-${c.id}`,
+        onClick: () => useDesk.getState().openChat(c.visitorId, 'side'),
+      });
+    });
+    s.on('chat:transferred', ({ conversation: c, fromName, note }) => {
+      const desk = useDesk.getState();
+      desk.upsertConversation(c);
+      desk.addTab(c.visitorId);
+      const v = desk.visitors[c.visitorId];
+      const who = c.visitorName ?? (v ? visitorLabel(v) : 'a visitor');
+      alertAgent({
+        kind: 'new-chat',
+        agentStatus: myStatus(),
+        viewingThisChat: false,
+        title: `${fromName} transferred ${who} to you`,
+        body: note ?? c.preview ?? 'Open the chat to reply',
         tag: `chat-${c.id}`,
         onClick: () => useDesk.getState().openChat(c.visitorId, 'side'),
       });

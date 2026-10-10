@@ -98,9 +98,32 @@ export interface HomeStats {
 
 export const DEFAULT_DEPARTMENTS = ['Orders & shipping', 'Billing', 'Technical support', 'Sales'];
 
-export interface WidgetConfig {
-  accountName: string;
+/** How the website chat widget looks and what it asks. Admins edit it in Settings → Chat widget. */
+export interface WidgetSettings {
+  /** Theme color (#rrggbb) for the header, bubble and buttons; null keeps the Replyfinch look. */
+  color: string | null;
+  position: 'right' | 'left';
+  /** Shown above the pre-chat form. */
+  greeting: string;
+  /** Shown above the leave-a-message form when nobody is online. */
+  offlineGreeting: string;
+  /** Visitors pick one before chatting; empty hides the question. Also the targets for transfers. */
   departments: string[];
+  /** The email field on the pre-chat form (the leave-a-message form always asks for it). */
+  emailField: 'optional' | 'required' | 'hidden';
+}
+
+export const DEFAULT_WIDGET_SETTINGS: WidgetSettings = {
+  color: null,
+  position: 'right',
+  greeting: "Hi there 👋 Tell us a little about you and we'll connect you with the right team.",
+  offlineGreeting: "We're not online right now. Leave a message and we'll get back to you by email.",
+  departments: DEFAULT_DEPARTMENTS,
+  emailField: 'optional',
+};
+
+export interface WidgetConfig extends WidgetSettings {
+  accountName: string;
   agentsOnline: number;
 }
 

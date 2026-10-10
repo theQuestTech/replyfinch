@@ -59,6 +59,11 @@ export interface AgentClientEvents {
   ) => void;
   typing: (p: { conversationId: string; isTyping: boolean }) => void;
   'chat:end': (p: { conversationId: string }) => void;
+  /** Hand an open chat to another agent, or back to the queue for a department. */
+  'chat:transfer': (
+    p: { conversationId: string; toAgentId?: string; department?: string; note?: string },
+    ack: Ack<Conversation>,
+  ) => void;
   'agent:status': (p: { status: AgentStatus }) => void;
 }
 
@@ -70,6 +75,8 @@ export interface AgentServerEvents {
   'message:new': (m: Message) => void;
   typing: (p: TypingPayload) => void;
   'team:update': (t: TeamMember[]) => void;
+  /** A chat was transferred to you. */
+  'chat:transferred': (p: { conversation: Conversation; fromName: string; note: string | null }) => void;
   /** A visitor left a message while nobody was online. */
   'offline:new': (m: OfflineMessage) => void;
   /** An offline message was marked handled or reopened. */

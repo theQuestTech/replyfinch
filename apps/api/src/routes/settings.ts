@@ -7,6 +7,7 @@ import {
   shortcutSchema,
   teamCreateSchema,
   teamUpdateSchema,
+  widgetSettingsSchema,
   type Agent,
 } from '@replyfinch/shared';
 import { checkPassword, hashPassword } from '../auth';
@@ -15,13 +16,14 @@ import { users } from '../db/schema';
 import { newId } from '../ids';
 import type { Realtime } from '../realtime';
 import type { ShortcutService } from '../services/shortcuts';
+import type { WidgetSettingsService } from '../services/widget-settings';
 
-type Deps = { db: Db; realtime: Realtime; shortcuts: ShortcutService };
+type Deps = { db: Db; realtime: Realtime; shortcuts: ShortcutService; widgetSettings: WidgetSettingsService };
 
 const firstIssue = (e: { issues: { message: string }[] }) => e.issues[0]?.message ?? 'invalid_input';
 
 /** Profile, team management (admins) and shortcuts. Registered behind agent auth. */
-export async function settingsRoutes(r: FastifyInstance, { db, realtime, shortcuts }: Deps) {
+export async function settingsRoutes(r: FastifyInstance, { db, realtime, shortcuts, widgetSettings }: Deps) {
   const requireAdmin = async (req: FastifyRequest, reply: FastifyReply) => {
     const [me] = await db.select({ role: users.role }).from(users).where(eq(users.id, req.agent.sub));
     if (me?.role !== 'admin') return reply.code(403).send({ error: 'admins_only' });
@@ -37,6 +39,16 @@ export async function settingsRoutes(r: FastifyInstance, { db, realtime, shortcu
         .from(users)
         .where(and(eq(users.accountId, accountId), eq(users.role, 'admin'), eq(users.active, true), ne(users.id, exceptId)))
     ).length;
+
+  // ---------------- chat widget ----------------
+  // Every agent reads them (departments are transfer targets); only admins change them.
+  r.get('/settings/widget', async (req) => widgetSettings.withName(req.agent.acc));
+
+  r.put('/settings/widget', { preHandler: requireAdmin }, async (req, reply) => {
+    const body = widgetSettingsSchema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: firstIssue(body.error) });
+    return widgetSettings.set(req.agent.acc, body.data);
+  });
 
   // ---------------- my profile ----------------
   r.patch('/me', async (req, reply) => {

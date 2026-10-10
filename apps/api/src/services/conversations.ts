@@ -243,6 +243,47 @@ export function createConversationService(db: Db) {
       return { messages: out, conversation: current, joined };
     },
 
+    /**
+     * Hand a chat to another agent (they become the assignee and join when they
+     * type), or back to the queue for a department. The agent handing it over
+     * leaves the chat. An optional note is posted as an internal note.
+     */
+    async transfer(
+      conv: ConvRow,
+      from: { id: string; name: string },
+      to: { agent: { id: string; name: string } } | { department: string },
+      note?: string,
+    ) {
+      const toAgent = 'agent' in to;
+      const [updated] = await db
+        .update(conversations)
+        .set(
+          toAgent
+            ? { assigneeId: to.agent.id, participantIds: sql`array_remove(${conversations.participantIds}, ${from.id})` }
+            : {
+                department: to.department,
+                assigneeId: null,
+                status: 'waiting',
+                participantIds: sql`array_remove(${conversations.participantIds}, ${from.id})`,
+              },
+        )
+        .where(eq(conversations.id, conv.id))
+        .returning();
+      const out: Message[] = [];
+      const sys = await insertMessage(updated!, {
+        authorType: 'system',
+        authorId: from.id,
+        authorName: from.name,
+        body: toAgent ? `${from.name} transferred the chat to ${to.agent.name}` : `${from.name} transferred the chat to the ${to.department} team`,
+      });
+      out.push(messageDto(sys.message));
+      if (note) {
+        const n = await insertMessage(updated!, { authorType: 'agent', authorId: from.id, authorName: from.name, body: note, internal: true });
+        out.push(messageDto(n.message));
+      }
+      return { conversation: updated!, messages: out };
+    },
+
     async end(conv: ConvRow, by: { name: string; id: string | null }, note = `Chat ended by ${by.name}`) {
       const [updated] = await db
         .update(conversations)

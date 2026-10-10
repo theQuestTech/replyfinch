@@ -6,7 +6,7 @@ Live chat and helpdesk platform: a website chat widget, a real-time agent worksp
 apps/
   api/      Fastify + Socket.IO server, Postgres (Drizzle), Redis presence   → Railway
   web/      Agent workspace (React + Vite + Tailwind)                         → Vercel
-  widget/   Embeddable website chat widget (single widget.js, ~18 KB gzip)    → Vercel
+  widget/   Embeddable website chat widget (single widget.js, ~20 KB gzip)    → Vercel
 packages/
   shared/   Types, socket event contracts and validation shared by all apps
 e2e/        Playwright browser tests (Home queue, Visitors, chat windows, widget)
@@ -94,4 +94,6 @@ Create the test database once: `docker compose exec postgres createdb -U replyfi
 - The widget gets a visitor token from `POST /widget/session`, then connects to the `/visitor` Socket.IO namespace and reports page views, activity and a heartbeat.
 - Agents connect to `/agent` and receive the live visitor list, conversations, messages and typing in real time.
 - Opening a chat only **views** it. The agent's first message **joins** it (they become the assignee if nobody is), which posts "… joined the chat" to the visitor. Agents can also message a browsing visitor first ("Start chat").
+- When no agent is online (status "Online", not Away), the widget shows a **leave a message** form instead. Messages land in the agent app's **Inbox**; agents reply by email (the button opens their mail app with the reply drafted) and mark them handled. The widget switches between the two live, as agents come and go.
+- **History** lists every chat, newest first, searchable by visitor name, email or anything said, and filterable by status, agent and period.
 - Presence lives in Redis and Socket.IO uses the Redis adapter, so you can run several API instances behind a load balancer. See `docs/PLAN.md` → *Scaling decisions*.

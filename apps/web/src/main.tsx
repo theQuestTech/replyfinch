@@ -1,21 +1,22 @@
 import { StrictMode, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { Construction } from 'lucide-react';
 import './index.css';
 import { useAuth } from './lib/auth';
+import { queryClient } from './lib/query';
 import { Shell } from './components/Shell';
 import { Home } from './pages/Home';
 import { Login } from './pages/Login';
 import { Visitors } from './pages/Visitors';
+import { History } from './pages/History';
+import { Inbox } from './pages/Inbox';
 import { SettingsLayout } from './pages/settings/SettingsLayout';
 import { Profile } from './pages/settings/Profile';
 import { Team } from './pages/settings/Team';
 import { Shortcuts } from './pages/settings/Shortcuts';
 import { InstallWidget } from './pages/settings/InstallWidget';
-
-const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 10_000, retry: 1 } } });
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const token = useAuth((s) => s.token);
@@ -51,6 +52,8 @@ createRoot(document.getElementById('root')!).render(
           >
             <Route index element={<Home />} />
             <Route path="visitors" element={<Visitors />} />
+            <Route path="inbox" element={<Inbox />} />
+            <Route path="history" element={<History />} />
             <Route path="settings" element={<SettingsLayout />}>
               <Route index element={<Navigate to="profile" replace />} />
               <Route path="profile" element={<Profile />} />

@@ -80,6 +80,13 @@ class ReplyfinchWidget {
 
   private token: string | null = null;
   private popup: Window | null = null;
+  /** Any agent online? When not, the widget offers "leave a message" instead of a chat. */
+  private agentsOnline = true;
+  private offlineTimer: number | undefined;
+  /** The visitor has typed into the pre-chat / leave-a-message form: don't swap it under them. */
+  private formDirty = false;
+  /** Set after a message was left: { name, email } for the thank-you note. */
+  private offlineSent: { name: string; email: string } | null = null;
 
   constructor(
     private accountId: string,
@@ -114,6 +121,7 @@ class ReplyfinchWidget {
     this.token = s.visitorToken;
     if (!this.isPopup) store.set(`rf_token_${this.accountId}`, s.visitorToken);
     this.config = s.config;
+    this.agentsOnline = s.config.agentsOnline > 0;
     this.visitorName = s.name;
     this.visitorEmail = s.email;
     this.renderHeader();
@@ -152,12 +160,26 @@ class ReplyfinchWidget {
       this.agentTyping = t.isTyping ? t.name : null;
       this.renderTyping();
     });
+    socket.on('agents:availability', ({ online }) => {
+      window.clearTimeout(this.offlineTimer);
+      if (online) return this.setAvailability(true);
+      // An agent reloading their page drops offline for a moment; don't flip the widget for that.
+      this.offlineTimer = window.setTimeout(() => this.setAvailability(false), 10_000);
+    });
     socket.on('chat:ended', () => {
       if (this.conversation) this.conversation = { ...this.conversation, status: 'ended' };
       this.agentTyping = null;
       this.render();
     });
     setInterval(() => socket.connected && socket.emit('visitor:heartbeat'), HEARTBEAT_INTERVAL_MS);
+  }
+
+  private setAvailability(online: boolean) {
+    if (online === this.agentsOnline) return;
+    this.agentsOnline = online;
+    this.renderHeader();
+    // Only swap the start screen if the visitor hasn't started filling it in.
+    if (!this.conversation && !this.formDirty && !this.offlineSent) this.render();
   }
 
   private sendPage() {
@@ -279,7 +301,7 @@ class ReplyfinchWidget {
   private renderHeader() {
     const title = this.root.querySelector('[data-rf=title]');
     if (title && this.config) title.textContent = this.config.accountName;
-    const online = (this.config?.agentsOnline ?? 0) > 0;
+    const online = this.agentsOnline;
     this.subtitle.innerHTML = `<span class="dot ${online ? '' : 'off'}"></span>${
       online ? 'We typically reply in a few minutes' : "We're away — leave a message and we'll reply by email"
     }`;
@@ -289,7 +311,7 @@ class ReplyfinchWidget {
     this.body.innerHTML = '';
     this.composer.innerHTML = '';
     if (this.popup && !this.popup.closed) return this.renderPoppedOut();
-    if (!this.conversation) return this.renderPrechat();
+    if (!this.conversation) return this.agentsOnline ? this.renderPrechat() : this.renderOffline();
     for (const m of this.messages) this.body.append(this.messageEl(m));
     for (const m of this.pending.values()) this.body.append(this.messageEl(m, true));
     this.renderTyping();
@@ -334,6 +356,7 @@ class ReplyfinchWidget {
     const err = el('div', { class: 'error' });
     const submit = el('button', { class: 'btn', type: 'submit' }, 'Start chat') as HTMLButtonElement;
     f.append(label('Name', name), label('Email', email), label('Department', dept), label('Message', message), err, submit);
+    f.addEventListener('input', () => (this.formDirty = true));
     f.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!this.socket) return;
@@ -352,8 +375,80 @@ class ReplyfinchWidget {
         return;
       }
       this.visitorName = name.value.trim();
+      this.formDirty = false;
       this.conversation = res.data.conversation;
       this.messages = res.data.messages;
+      this.render();
+    });
+    this.body.append(f);
+  }
+
+  /** Nobody online: collect a message and an email address to reply to. */
+  private renderOffline() {
+    this.typingEl.textContent = '';
+    if (this.offlineSent) {
+      const { name, email } = this.offlineSent;
+      const box = el('div', { class: 'popped', 'data-rf': 'offline-sent' });
+      box.append(el('div', { class: 'popped-title' }, `Thanks, ${escapeHtml(name.split(' ')[0] ?? name)}!`));
+      const text = el('div', { class: 'popped-text' });
+      text.append("We've got your message and will reply to ", el('b', {}, escapeHtml(email)), ' as soon as we can.');
+      box.append(text);
+      const again = el('button', { class: 'btn ghost' }, 'Send another message');
+      again.addEventListener('click', () => {
+        this.offlineSent = null;
+        this.render();
+      });
+      box.append(again);
+      this.body.append(box);
+      return;
+    }
+    const f = el('form', { class: 'prechat', 'data-rf': 'offline' }) as HTMLFormElement;
+    f.append(el('div', { class: 'intro' }, "We're not online right now. Leave a message and we'll get back to you by email."));
+    const name = el('input', { name: 'name', required: '', placeholder: 'Your name', autocomplete: 'name' }) as HTMLInputElement;
+    if (this.visitorName) name.value = this.visitorName;
+    const email = el('input', { name: 'email', type: 'email', required: '', placeholder: 'you@example.com', autocomplete: 'email' }) as HTMLInputElement;
+    if (this.visitorEmail) email.value = this.visitorEmail;
+    const dept = el('select', { name: 'department' }) as HTMLSelectElement;
+    for (const d of this.config?.departments ?? []) dept.append(el('option', { value: d }, d));
+    const message = el('textarea', { name: 'message', required: '', rows: '4', placeholder: 'How can we help?' }) as HTMLTextAreaElement;
+    const label = (t: string, input: HTMLElement) => {
+      const l = el('label');
+      l.append(t, input);
+      return l;
+    };
+    const err = el('div', { class: 'error' });
+    const submit = el('button', { class: 'btn', type: 'submit' }, 'Send message') as HTMLButtonElement;
+    f.append(label('Name', name), label('Email', email), label('Department', dept), label('Message', message), err, submit);
+    f.addEventListener('input', () => (this.formDirty = true));
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!this.socket) return;
+      submit.disabled = true;
+      err.textContent = '';
+      const sent = { name: name.value.trim(), email: email.value.trim() };
+      const res = await this.socket
+        .timeout(10_000)
+        .emitWithAck('offline:send', {
+          ...sent,
+          department: dept.value || undefined,
+          message: message.value.trim(),
+          pageUrl: this.isPopup ? undefined : location.href,
+        })
+        .catch(() => ({ ok: false as const, error: 'timeout' }));
+      submit.disabled = false;
+      if (!res.ok) {
+        err.textContent =
+          res.error === 'rate_limited'
+            ? "You've sent several messages already — we'll be in touch soon."
+            : res.error === 'invalid_input'
+              ? 'Please check your email address.'
+              : 'Something went wrong. Please try again.';
+        return;
+      }
+      this.visitorName = sent.name;
+      this.visitorEmail = sent.email;
+      this.offlineSent = sent;
+      this.formDirty = false;
       this.render();
     });
     this.body.append(f);

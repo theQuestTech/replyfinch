@@ -112,3 +112,44 @@ export interface Shortcut {
   tags: string[];
   updatedAt: number;
 }
+
+/** A message left in the widget while no agent was online. */
+export interface OfflineMessage {
+  id: string;
+  visitorId: string;
+  name: string;
+  email: string;
+  department: string | null;
+  message: string;
+  pageUrl: string | null;
+  status: 'new' | 'handled';
+  handledById: string | null;
+  handledByName: string | null;
+  handledAt: number | null;
+  createdAt: number;
+}
+
+/** One row of the chat History page. */
+export interface HistoryEntry {
+  id: string;
+  visitorId: string;
+  visitorName: string | null;
+  visitorEmail: string | null;
+  status: ConversationStatus;
+  assigneeId: string | null;
+  assigneeName: string | null;
+  department: string | null;
+  startedAt: number;
+  endedAt: number | null;
+  firstReplyAt: number | null;
+  /** Messages from the visitor and agents (not system notes). */
+  messageCount: number;
+  /** The visitor's first message. */
+  preview: string | null;
+}
+
+export interface HistoryPage {
+  items: HistoryEntry[];
+  /** Pass back as ?cursor= to load older chats; null when there are no more. */
+  nextCursor: string | null;
+}

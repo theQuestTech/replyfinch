@@ -31,11 +31,12 @@ import { initials } from '../lib/format';
 import { Avatar, Kbd, StatusDot } from './ui';
 import { ChatDock } from './chat/ChatDock';
 import { ChatWindow } from './chat/ChatWindow';
+import { useOfflineCount } from '../pages/Inbox';
 
 const NAV = [
-  { to: '/', label: 'Home', icon: House, end: true },
+  { to: '/', label: 'Home', icon: House, end: true, badge: 'waiting' as const },
   { to: '/visitors', label: 'Visitors', icon: Eye },
-  { to: '/inbox', label: 'Inbox', icon: Inbox, badge: true },
+  { to: '/inbox', label: 'Inbox', icon: Inbox, badge: 'offline' as const },
   { to: '/tickets', label: 'Tickets', icon: Ticket },
   { to: '/customers', label: 'Customers', icon: Users },
   { to: '/history', label: 'History', icon: History },
@@ -98,6 +99,8 @@ export function Shell() {
   }, [setAgent]);
   const active = useDesk((s) => s.active);
   const waiting = useDesk((s) => Object.values(s.conversations).filter((c) => c.status === 'waiting').length);
+  const { data: offlineNew = 0 } = useOfflineCount();
+  const badges = { waiting, offline: offlineNew };
   const { expanded, toggle } = useSidebar();
   useTabTitle();
   useEffect(() => unlockAudio(), []);
@@ -129,14 +132,14 @@ export function Shell() {
           <NavLink key={to} to={to} end={end} title={expanded ? undefined : label} aria-label={label} className={({ isActive }) => item(isActive)}>
             <Icon className="size-5 shrink-0" />
             {expanded && <span className="truncate text-sm font-medium">{label}</span>}
-            {badge && waiting > 0 && (
+            {badge && badges[badge] > 0 && (
               <span
                 className={clsx(
                   'rounded-full bg-danger px-1.5 text-[10px] leading-4 font-bold text-white',
                   expanded ? 'ml-auto' : 'absolute top-1 right-0.5',
                 )}
               >
-                {waiting}
+                {badges[badge]}
               </span>
             )}
           </NavLink>

@@ -6,6 +6,7 @@ import {
   chatInitiateSchema,
   chatStartSchema,
   messageSendSchema,
+  offlineMessageSchema,
   OFFLINE_AFTER_MS,
   pageSchema,
   type Ack,
@@ -22,16 +23,20 @@ import { pageViews } from './db/schema';
 import { newId } from './ids';
 import { pushPage, toLiveVisitor, type Presence, type VisitorRecord } from './presence';
 import type { ConversationService } from './services/conversations';
+import type { OfflineService } from './services/offline';
 import type { StatsService } from './services/stats';
 import type { VisitorService } from './services/visitors';
 
 // Rooms:
 //   acc:<accountId>  every agent socket of an account
 //   vis:<visitorId>  every widget socket (tab) of one visitor
+//   vacc:<accountId> every widget socket of an account (agent availability)
 // A visitor reloading or navigating disconnects briefly; we wait this long before
 // declaring them gone.
 const DEFAULT_LEAVE_GRACE_MS = 8000;
 const SWEEP_INTERVAL_MS = 10_000;
+/** A visitor can leave this many offline messages per hour. */
+const OFFLINE_MESSAGES_PER_HOUR = 5;
 
 type VisitorSocket = Socket<VisitorClientEvents, VisitorServerEvents, Record<string, never>, { claims: VisitorClaims }>;
 type AgentSocket = Socket<AgentClientEvents, AgentServerEvents, Record<string, never>, { claims: AgentClaims }>;
@@ -43,6 +48,7 @@ interface Deps {
   auth: Auth;
   presence: Presence;
   conversations: ConversationService;
+  offline: OfflineService;
   visitors: VisitorService;
   stats: StatsService;
   corsOrigins: string[];
@@ -111,7 +117,12 @@ export function createRealtime(d: Deps) {
   }
 
   async function broadcastTeam(acc: string) {
-    toAgents(acc).emit('team:update', await d.stats.team(acc));
+    const team = await d.stats.team(acc);
+    toAgents(acc).emit('team:update', team);
+    // Tell widgets when the account goes from "someone online" to "nobody online" or back.
+    const online = team.some((t) => t.status === 'online');
+    const prev = await d.redis.getset(`avail:${acc}`, online ? '1' : '0');
+    if (prev !== (online ? '1' : '0')) visitorsNs.to(`vacc:${acc}`).emit('agents:availability', { online });
   }
 
   async function syncVisitorConversation(conv: Conversation) {
@@ -163,6 +174,10 @@ export function createRealtime(d: Deps) {
     await d.presence.putVisitor(record);
     await broadcastVisitor(record);
 
+    // Catch up on availability changes missed while disconnected.
+    const avail = await d.redis.get(`avail:${acc}`);
+    if (avail !== null) socket.emit('agents:availability', { online: avail === '1' });
+
     if (open) {
       socket.emit('chat:resume', {
         conversation: await d.conversations.dto(open),
@@ -190,7 +205,7 @@ export function createRealtime(d: Deps) {
 
   visitorsNs.on('connection', (socket: VisitorSocket) => {
     const { sub: vid, acc } = socket.data.claims;
-    socket.join(`vis:${vid}`);
+    socket.join([`vis:${vid}`, `vacc:${acc}`]);
     const ready = setupVisitor(socket, vid, acc).catch((err) => {
       console.error('[realtime] visitor setup failed', err);
       socket.disconnect(true);
@@ -257,6 +272,24 @@ export function createRealtime(d: Deps) {
       toAgents(acc).emit('conversation:update', conv);
       for (const m of started.messages) toAgents(acc).emit('message:new', m);
       await syncVisitorConversation(conv);
+    });
+
+    on('offline:send', async (...[p, ack]: Parameters<VisitorClientEvents['offline:send']>) => {
+      const parsed = offlineMessageSchema.safeParse(p);
+      if (!parsed.success) return fail(ack, 'invalid_input');
+      const key = `offline-rate:${vid}`;
+      const sent = await d.redis.incr(key);
+      if (sent === 1) await d.redis.expire(key, 3600);
+      if (sent > OFFLINE_MESSAGES_PER_HOUR) return fail(ack, 'rate_limited');
+      const msg = await d.offline.create(acc, vid, parsed.data);
+      ack({ ok: true, data: { id: msg.id } });
+      toAgents(acc).emit('offline:new', msg);
+      const r = await d.presence.updateVisitor(acc, vid, (rec) => {
+        rec.name = parsed.data.name;
+        rec.email = parsed.data.email;
+        rec.lastActivityAt = Date.now();
+      });
+      if (r) await broadcastVisitor(r);
     });
 
     on('message:send', async (...[p, ack]: Parameters<VisitorClientEvents['message:send']>) => {
@@ -489,6 +522,8 @@ export function createRealtime(d: Deps) {
     async disconnectAgent(uid: string) {
       agentsNs.in(`agent:${uid}`).disconnectSockets(true);
     },
+    /** An agent marked an offline message handled (or reopened it). */
+    offlineChanged: (acc: string, m: Parameters<AgentServerEvents['offline:update']>[0]) => toAgents(acc).emit('offline:update', m),
     /** Push profile edits made over REST to everyone watching. */
     async visitorChanged(acc: string, vid: string, patch: Partial<VisitorRecord>) {
       const r = await d.presence.updateVisitor(acc, vid, (rec) => Object.assign(rec, patch));

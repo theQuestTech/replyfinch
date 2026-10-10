@@ -7,6 +7,7 @@ import { useAuth } from './auth';
 import { useDesk } from './store';
 import { alertAgent } from './notify';
 import { visitorLabel } from './format';
+import { queryClient } from './query';
 
 const myStatus = () => {
   const me = useAuth.getState().agent?.id;
@@ -79,6 +80,23 @@ export function useRealtime() {
       });
     });
     s.on('team:update', (t) => useDesk.getState().setTeam(t));
+    s.on('offline:update', () => void queryClient.invalidateQueries({ queryKey: ['offline'] }));
+    s.on('offline:new', (m) => {
+      void queryClient.invalidateQueries({ queryKey: ['offline'] });
+      alertAgent({
+        kind: 'offline-message',
+        agentStatus: myStatus(),
+        viewingThisChat: false,
+        title: `Offline message from ${m.name}`,
+        body: m.message,
+        tag: `offline-${m.id}`,
+        onClick: () => {
+          // Client-side navigation (react-router listens for popstate).
+          window.history.pushState({}, '', `/inbox?m=${m.id}`);
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        },
+      });
+    });
     s.on('typing', (t) => {
       if (t.authorType !== 'visitor') return;
       useDesk.getState().setTyping(t.conversationId, t.isTyping ? t.name : null);

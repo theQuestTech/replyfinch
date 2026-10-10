@@ -83,7 +83,7 @@ function visitorSocket(token: string): VisitorSock {
 beforeAll(async () => {
   await runMigrations(env.DATABASE_URL);
   const sql = postgres(env.DATABASE_URL, { onnotice: () => {} });
-  await sql`truncate shortcuts, messages, conversations, page_views, visitors, users, accounts cascade`;
+  await sql`truncate offline_messages, shortcuts, messages, conversations, page_views, visitors, users, accounts cascade`;
   await sql.end();
   await seed(env.DATABASE_URL);
   const r = new Redis(env.REDIS_URL);

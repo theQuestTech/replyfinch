@@ -58,3 +58,29 @@ export function greeting(d = new Date()): string {
 }
 
 export const clientId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+
+/** "Today, 3:04 PM", "Yesterday, 9:12 AM" or "Mar 4, 3:04 PM" (with the year when it isn't this year). */
+export function dateTime(ts: number, now = new Date()): string {
+  const d = new Date(ts);
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffDays = Math.round((day(now) - day(d)) / 86_400_000);
+  const time = clock(ts);
+  if (diffDays === 0) return `Today, ${time}`;
+  if (diffDays === 1) return `Yesterday, ${time}`;
+  const date = d.toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+    ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}),
+  });
+  return `${date}, ${time}`;
+}
+
+/** "just now", "5m ago", "3h ago", "2d ago", then a date. */
+export function timeAgo(ts: number, now = Date.now()): string {
+  const s = Math.max(0, Math.floor((now - ts) / 1000));
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86_400) return `${Math.floor(s / 3600)}h ago`;
+  if (s < 7 * 86_400) return `${Math.floor(s / 86_400)}d ago`;
+  return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric' });
+}

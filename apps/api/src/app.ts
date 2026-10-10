@@ -2,7 +2,15 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import { Redis } from 'ioredis';
 import { eq } from 'drizzle-orm';
-import { DEFAULT_DEPARTMENTS, loginSchema, visitorPatchSchema, widgetSessionSchema, type Agent } from '@replyfinch/shared';
+import {
+  DEFAULT_DEPARTMENTS,
+  historyQuerySchema,
+  loginSchema,
+  offlineStatusSchema,
+  visitorPatchSchema,
+  widgetSessionSchema,
+  type Agent,
+} from '@replyfinch/shared';
 import { checkPassword, createAuth, type AgentClaims } from './auth';
 import { createDb } from './db/client';
 import { users } from './db/schema';
@@ -13,6 +21,8 @@ import { createConversationService } from './services/conversations';
 import { createStatsService } from './services/stats';
 import { createVisitorService } from './services/visitors';
 import { createShortcutService } from './services/shortcuts';
+import { createHistoryService } from './services/history';
+import { createOfflineService } from './services/offline';
 import { settingsRoutes } from './routes/settings';
 
 declare module 'fastify' {
@@ -31,6 +41,8 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
   const visitors = createVisitorService(db);
   const stats = createStatsService(db, presence);
   const shortcuts = createShortcutService(db);
+  const history = createHistoryService(db);
+  const offline = createOfflineService(db);
 
   // Never send internal details (SQL, stack traces) to clients; log them instead.
   app.setErrorHandler((err: Error & { statusCode?: number }, req, reply) => {
@@ -57,6 +69,7 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
     auth,
     presence,
     conversations,
+    offline,
     visitors,
     stats,
     corsOrigins: env.corsOrigins,
@@ -131,6 +144,28 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
         conversation: await conversations.dto(conv),
         messages: await conversations.listMessages(conv.id, { includeInternal: true }),
       };
+    });
+
+    r.get('/history', async (req, reply) => {
+      const q = historyQuerySchema.safeParse(req.query);
+      if (!q.success) return reply.code(400).send({ error: 'invalid_input' });
+      return history.list(req.agent.acc, q.data);
+    });
+
+    r.get<{ Querystring: { status?: string } }>('/offline-messages', async (req) => {
+      const status = req.query.status === 'new' || req.query.status === 'handled' ? req.query.status : undefined;
+      return offline.list(req.agent.acc, status);
+    });
+
+    r.get('/offline-messages/count', async (req) => ({ new: await offline.countNew(req.agent.acc) }));
+
+    r.patch<{ Params: { id: string } }>('/offline-messages/:id', async (req, reply) => {
+      const body = offlineStatusSchema.safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: 'invalid_input' });
+      const m = await offline.setStatus(req.agent.acc, req.params.id, body.data.status, req.agent.sub);
+      if (!m) return reply.code(404).send({ error: 'not_found' });
+      realtime.offlineChanged(req.agent.acc, m);
+      return m;
     });
 
     r.get('/stats/home', async (req) => stats.home(req.agent.acc, req.agent.sub));

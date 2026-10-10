@@ -122,3 +122,23 @@ export const shortcuts = pgTable(
   },
   (t) => [uniqueIndex('shortcuts_account_name_idx').on(t.accountId, t.name)],
 );
+
+/** Messages visitors leave in the widget while no agent is online. Agents follow up by email. */
+export const offlineMessages = pgTable(
+  'offline_messages',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull().references(() => accounts.id),
+    visitorId: text('visitor_id').notNull().references(() => visitors.id),
+    name: text('name').notNull(),
+    email: text('email').notNull(),
+    department: text('department'),
+    message: text('message').notNull(),
+    pageUrl: text('page_url'),
+    status: text('status', { enum: ['new', 'handled'] }).notNull().default('new'),
+    handledBy: text('handled_by').references(() => users.id),
+    handledAt: timestamp('handled_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('offline_messages_account_idx').on(t.accountId, t.status, t.createdAt)],
+);

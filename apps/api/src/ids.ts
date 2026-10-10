@@ -10,4 +10,5 @@ export const newId = {
   message: () => `msg_${ulid()}`,
   pageView: () => `pv_${ulid()}`,
   shortcut: () => `sc_${ulid()}`,
+  offlineMessage: () => `om_${ulid()}`,
 };

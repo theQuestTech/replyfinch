@@ -89,3 +89,23 @@ export const shortcutSchema = z.object({
   message: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH),
   tags: z.array(z.string().trim().toLowerCase().min(1).max(30)).max(10).default([]),
 });
+
+export const offlineMessageSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  email: z.email(),
+  department: z.string().max(120).optional(),
+  message: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH),
+  pageUrl: z.string().max(2048).optional(),
+});
+
+export const offlineStatusSchema = z.object({ status: z.enum(['new', 'handled']) });
+
+export const historyQuerySchema = z.object({
+  q: z.string().trim().max(200).optional(),
+  agentId: z.string().max(64).optional(),
+  status: z.enum(['all', 'open', 'ended']).default('all'),
+  /** Only chats started in the last N days. */
+  days: z.coerce.number().int().min(1).max(3650).optional(),
+  cursor: z.string().max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+});

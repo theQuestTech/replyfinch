@@ -1,7 +1,7 @@
 // Socket.IO event contracts. Two namespaces:
 //   /visitor — the website widget
 //   /agent   — the agent app
-import type { AgentStatus, AuthorType, Conversation, LiveVisitor, Message, TeamMember } from './types';
+import type { AgentStatus, AuthorType, Conversation, LiveVisitor, Message, OfflineMessage, TeamMember } from './types';
 
 export interface TypingPayload {
   conversationId: string;
@@ -25,6 +25,11 @@ export interface VisitorClientEvents {
   'message:send': (p: { conversationId: string; body: string; clientId: string }, ack: Ack<Message>) => void;
   typing: (p: { conversationId: string; isTyping: boolean }) => void;
   'chat:end': (p: { conversationId: string }) => void;
+  /** Leave a message while no agent is online. */
+  'offline:send': (
+    p: { name: string; email: string; department?: string; message: string; pageUrl?: string },
+    ack: Ack<{ id: string }>,
+  ) => void;
 }
 
 export interface VisitorServerEvents {
@@ -33,6 +38,8 @@ export interface VisitorServerEvents {
   'message:new': (m: Message) => void;
   typing: (p: TypingPayload) => void;
   'chat:ended': (p: { conversationId: string }) => void;
+  /** Whether any agent is online (status "online", not away) — switches the widget between chat and leave-a-message. */
+  'agents:availability': (p: { online: boolean }) => void;
 }
 
 // ---------- /agent ----------
@@ -63,4 +70,8 @@ export interface AgentServerEvents {
   'message:new': (m: Message) => void;
   typing: (p: TypingPayload) => void;
   'team:update': (t: TeamMember[]) => void;
+  /** A visitor left a message while nobody was online. */
+  'offline:new': (m: OfflineMessage) => void;
+  /** An offline message was marked handled or reopened. */
+  'offline:update': (m: OfflineMessage) => void;
 }

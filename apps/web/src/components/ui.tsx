@@ -69,6 +69,16 @@ export function IconButton({ label, children, className, ...props }: ButtonHTMLA
   );
 }
 
+/** 👍 Good / 👎 Bad, as the visitor rated a chat. */
+export function RatingPill({ rating }: { rating: 'good' | 'bad' | null }) {
+  if (!rating) return null;
+  return (
+    <Pill tone={rating === 'good' ? 'success' : 'danger'}>
+      {rating === 'good' ? '👍 Good' : '👎 Bad'}
+    </Pill>
+  );
+}
+
 export function Kbd({ children }: { children: ReactNode }) {
   return <kbd className="rounded border border-line bg-muted px-1.5 py-px font-sans text-[10px] font-semibold text-ink-2">{children}</kbd>;
 }

@@ -82,6 +82,10 @@ export const conversations = pgTable(
     firstReplyAt: timestamp('first_reply_at', { withTimezone: true }),
     endedAt: timestamp('ended_at', { withTimezone: true }),
     lastMessageAt: timestamp('last_message_at', { withTimezone: true }).notNull().defaultNow(),
+    /** The visitor's rating after the chat ended. */
+    rating: text('rating', { enum: ['good', 'bad'] }),
+    ratingComment: text('rating_comment'),
+    ratedAt: timestamp('rated_at', { withTimezone: true }),
   },
   (t) => [
     index('conversations_account_status_idx').on(t.accountId, t.status),

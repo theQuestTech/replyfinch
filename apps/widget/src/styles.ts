@@ -68,6 +68,13 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .composer textarea { border-radius: 12px; max-height: 120px; }
 .send { width: 40px; height: 40px; flex: none; border-radius: 12px; border: 0; background: var(--primary); color: var(--on-primary); cursor: pointer; display: grid; place-items: center; }
 .send:disabled { opacity: .5; }
+.rate { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; text-align: center; }
+.rate-title { font-weight: 600; font-size: 13px; }
+.rate-row { display: flex; gap: 8px; justify-content: center; }
+.rate-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; border: 1px solid var(--border); background: var(--surface);
+  border-radius: 10px; padding: 9px 10px; font-size: 13px; font-weight: 600; color: var(--text); cursor: pointer; }
+.rate-btn span { font-size: 18px; line-height: 1; }
+.rate-btn:hover { border-color: var(--primary); background: var(--primary-subtle); }
 .footer { display: flex; justify-content: space-between; align-items: center; padding: 4px 10px 8px; background: var(--surface); font-size: 11px; color: var(--text-2); }
 .footer b { color: var(--text); }
 `;

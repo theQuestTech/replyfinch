@@ -27,7 +27,7 @@ import { useAuth } from '../../lib/auth';
 import { clientId, clock, duration, initials, visitorLabel } from '../../lib/format';
 import { getSocket } from '../../lib/realtime';
 import { useDesk, type ChatMode } from '../../lib/store';
-import { Avatar, Button, CountryCode, IconButton, Kbd, Pill } from '../ui';
+import { Avatar, Button, CountryCode, IconButton, Kbd, Pill, RatingPill } from '../ui';
 import { Transcript, type PendingMessage } from './Transcript';
 import { VisitorInfo } from './VisitorInfo';
 import { TransferModal } from './TransferModal';
@@ -108,6 +108,7 @@ export function ChatWindow({ visitorId, mode }: { visitorId: string; mode: ChatM
             <div className="flex items-center gap-2">
               <span className="truncate text-[15px] font-bold">{name}</span>
               <CountryCode code={visitor.country} />
+              {conversation?.rating && <RatingPill rating={conversation.rating} />}
               {visitor.device === 'mobile' ? <Smartphone className="size-3 text-ink-2" /> : <Monitor className="size-3 text-ink-2" />}
             </div>
             <HeaderStatus conversation={conversation} joined={joined} meId={me.id} left={!!visitor.left} />

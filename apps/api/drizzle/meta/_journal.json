@@ -36,6 +36,13 @@
       "when": 1791654040444,
       "tag": "0004_widget_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791655751131,
+      "tag": "0005_ratings",
+      "breakpoints": true
     }
   ]
 }

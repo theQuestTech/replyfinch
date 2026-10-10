@@ -50,6 +50,8 @@ export function createConversationService(db: Db) {
       endedAt: row.endedAt?.getTime() ?? null,
       lastMessageAt: row.lastMessageAt.getTime(),
       preview: last?.body ?? null,
+      rating: row.rating,
+      ratingComment: row.ratingComment,
     };
   }
 
@@ -282,6 +284,28 @@ export function createConversationService(db: Db) {
         out.push(messageDto(n.message));
       }
       return { conversation: updated!, messages: out };
+    },
+
+    /** The visitor rates an ended chat. Agents get an internal note in the transcript. */
+    async rate(conv: ConvRow, visitorName: string, rating: 'good' | 'bad', comment?: string) {
+      const [updated] = await db
+        .update(conversations)
+        .set({ rating, ratingComment: comment || null, ratedAt: new Date() })
+        .where(eq(conversations.id, conv.id))
+        .returning();
+      const label = rating === 'good' ? '👍 Good' : '👎 Bad';
+      const note = await insertMessage(updated!, {
+        authorType: 'system',
+        authorId: conv.visitorId,
+        authorName: visitorName,
+        // The widget saves the thumbs first, then the comment: don't repeat the rating.
+        body:
+          conv.rating === rating && comment
+            ? `${visitorName} added a comment: “${comment}”`
+            : `${visitorName} rated the chat ${label}${comment ? `: “${comment}”` : ''}`,
+        internal: true,
+      });
+      return { conversation: updated!, message: messageDto(note.message) };
     },
 
     async end(conv: ConvRow, by: { name: string; id: string | null }, note = `Chat ended by ${by.name}`) {

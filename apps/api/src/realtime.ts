@@ -4,6 +4,7 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import type { Redis } from 'ioredis';
 import {
   chatInitiateSchema,
+  chatRateSchema,
   chatStartSchema,
   chatTransferSchema,
   messageSendSchema,
@@ -273,6 +274,20 @@ export function createRealtime(d: Deps) {
       toAgents(acc).emit('conversation:update', conv);
       for (const m of started.messages) toAgents(acc).emit('message:new', m);
       await syncVisitorConversation(conv);
+    });
+
+    on('chat:rate', async (...[p, ack]: Parameters<VisitorClientEvents['chat:rate']>) => {
+      const parsed = chatRateSchema.safeParse(p);
+      if (!parsed.success) return fail(ack, 'invalid_input');
+      const conv = await d.conversations.get(acc, parsed.data.conversationId);
+      if (!conv || conv.visitorId !== vid) return fail(ack, 'not_found');
+      if (conv.status !== 'ended') return fail(ack, 'not_ended');
+      const record = await d.presence.getVisitor(acc, vid);
+      const name = record?.name ?? (await d.visitors.get(acc, vid))?.name ?? 'The visitor';
+      const res = await d.conversations.rate(conv, name, parsed.data.rating, parsed.data.comment);
+      ack({ ok: true, data: { ok: true } });
+      toAgents(acc).emit('message:new', res.message);
+      toAgents(acc).emit('conversation:update', await d.conversations.dto(res.conversation));
     });
 
     on('offline:send', async (...[p, ack]: Parameters<VisitorClientEvents['offline:send']>) => {

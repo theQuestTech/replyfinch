@@ -95,6 +95,8 @@ class ReplyfinchWidget {
   private offlineTimer: number | undefined;
   /** The visitor has typed into the pre-chat / leave-a-message form: don't swap it under them. */
   private formDirty = false;
+  /** Rating an ended chat: which chat, and how far the visitor got. */
+  private rating: { conversationId: string; value: 'good' | 'bad'; step: 'comment' | 'done' } | null = null;
   /** Set after a message was left: { name, email } for the thank-you note. */
   private offlineSent: { name: string; email: string } | null = null;
 
@@ -525,7 +527,60 @@ class ReplyfinchWidget {
     this.composer.append(c, footer);
   }
 
+  /** "How was your chat?" with thumbs up / down, then an optional comment. */
+  private renderRating() {
+    const conv = this.conversation;
+    if (!conv || !this.config?.ratings || !this.socket) return;
+    const r = this.rating?.conversationId === conv.id ? this.rating : null;
+    const box = el('div', { class: 'rate', 'data-rf': 'rating' });
+    const send = (value: 'good' | 'bad', comment?: string) =>
+      this.socket!.timeout(8000)
+        .emitWithAck('chat:rate', { conversationId: conv.id, rating: value, comment })
+        .catch(() => ({ ok: false as const, error: 'timeout' }));
+
+    if (!r) {
+      box.append(el('div', { class: 'rate-title' }, 'How was your chat?'));
+      const row = el('div', { class: 'rate-row' });
+      for (const [value, label, emoji] of [
+        ['good', 'Good', '👍'],
+        ['bad', 'Bad', '👎'],
+      ] as const) {
+        const b = el('button', { class: 'rate-btn', 'aria-label': `Rate ${label}` }, `<span>${emoji}</span>${label}`);
+        b.addEventListener('click', async () => {
+          this.rating = { conversationId: conv.id, value, step: 'comment' };
+          this.render();
+          await send(value);
+        });
+        row.append(b);
+      }
+      box.append(row);
+    } else if (r.step === 'comment') {
+      box.append(el('div', { class: 'rate-title' }, r.value === 'good' ? 'Glad to hear it! Anything to add?' : "Sorry about that. What could we do better?"));
+      const ta = el('textarea', { rows: '2', placeholder: 'Your comment (optional)', 'aria-label': 'Comment', maxlength: '1000' }) as HTMLTextAreaElement;
+      const row = el('div', { class: 'rate-row' });
+      const submit = el('button', { class: 'btn' }, 'Send') as HTMLButtonElement;
+      submit.addEventListener('click', async () => {
+        const comment = ta.value.trim();
+        submit.disabled = true;
+        if (comment) await send(r.value, comment);
+        this.rating = { ...r, step: 'done' };
+        this.render();
+      });
+      const skip = el('button', { class: 'btn ghost' }, 'Skip');
+      skip.addEventListener('click', () => {
+        this.rating = { ...r, step: 'done' };
+        this.render();
+      });
+      row.append(submit, skip);
+      box.append(ta, row);
+    } else {
+      box.append(el('div', { class: 'rate-title' }, 'Thanks for your feedback!'));
+    }
+    this.body.append(box);
+  }
+
   private renderEnded() {
+    this.renderRating();
     const c = el('div', { class: 'composer' });
     const again = el('button', { class: 'btn', style: 'width:100%' }, 'Start a new chat');
     again.addEventListener('click', () => {

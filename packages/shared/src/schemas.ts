@@ -72,6 +72,13 @@ export const widgetSettingsSchema = z.object({
     .max(20, 'Up to 20 departments')
     .refine((d) => new Set(d.map((x) => x.toLowerCase())).size === d.length, 'Each department needs a different name'),
   emailField: z.enum(['optional', 'required', 'hidden']),
+  ratings: z.boolean(),
+});
+
+export const chatRateSchema = z.object({
+  conversationId: z.string().min(1),
+  rating: z.enum(['good', 'bad']),
+  comment: z.string().trim().max(1000).optional(),
 });
 
 export const MIN_PASSWORD_LENGTH = 10;
@@ -129,6 +136,7 @@ export const historyQuerySchema = z.object({
   q: z.string().trim().max(200).optional(),
   agentId: z.string().max(64).optional(),
   status: z.enum(['all', 'open', 'ended']).default('all'),
+  rating: z.enum(['good', 'bad', 'any']).optional(),
   /** Only chats started in the last N days. */
   days: z.coerce.number().int().min(1).max(3650).optional(),
   cursor: z.string().max(100).optional(),

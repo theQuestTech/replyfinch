@@ -166,6 +166,17 @@ function WidgetForm({ initial }: { initial: Settings }) {
           </Card>
 
           <Card className="flex flex-col gap-4 p-6">
+            <h3 className="text-base font-bold">After the chat</h3>
+            <label className="flex cursor-pointer items-start gap-3">
+              <input type="checkbox" className="mt-1 size-4 accent-primary" checked={s.ratings} onChange={(e) => set({ ratings: e.target.checked })} />
+              <span>
+                <span className="block text-sm font-semibold">Ask visitors to rate the chat</span>
+                <span className="block text-xs text-ink-2">A 👍 / 👎 and an optional comment when the chat ends. Ratings show in History.</span>
+              </span>
+            </label>
+          </Card>
+
+          <Card className="flex flex-col gap-4 p-6">
             <h3 className="text-base font-bold">Pre-chat form</h3>
             <Field label="Email address" hint="The leave-a-message form always asks for an email, so you can reply.">
               <select className={inputClass} value={s.emailField} onChange={(e) => set({ emailField: e.target.value as WidgetSettings['emailField'] })}>

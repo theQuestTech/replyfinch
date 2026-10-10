@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import type { HistoryEntry, HistoryPage } from '@replyfinch/shared';
 import type { Db } from '../db/client';
 import { conversations, messages, users, visitors } from '../db/schema';
@@ -7,6 +7,7 @@ export interface HistoryQuery {
   q?: string;
   agentId?: string;
   status: 'all' | 'open' | 'ended';
+  rating?: 'good' | 'bad' | 'any';
   days?: number;
   cursor?: string;
   limit: number;
@@ -30,6 +31,8 @@ export function createHistoryService(db: Db) {
           or(eq(conversations.assigneeId, query.agentId), sql`${query.agentId} = any(${conversations.participantIds})`)!,
         );
       }
+      if (query.rating === 'any') where.push(isNotNull(conversations.rating));
+      else if (query.rating) where.push(eq(conversations.rating, query.rating));
       if (query.days) where.push(gte(conversations.startedAt, new Date(Date.now() - query.days * 86_400_000)));
       if (query.cursor) where.push(lt(conversations.id, query.cursor));
       if (query.q) {
@@ -56,6 +59,8 @@ export function createHistoryService(db: Db) {
           startedAt: conversations.startedAt,
           endedAt: conversations.endedAt,
           firstReplyAt: conversations.firstReplyAt,
+          rating: conversations.rating,
+          ratingComment: conversations.ratingComment,
           messageCount: sql<number>`(select count(*) from ${messages} m where m.conversation_id = ${conversations.id} and m.author_type in ('visitor', 'agent') and not m.internal)`,
           preview: sql<string | null>`(select m.body from ${messages} m where m.conversation_id = ${conversations.id} and m.author_type = 'visitor' order by m.created_at limit 1)`,
         })

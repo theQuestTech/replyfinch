@@ -57,7 +57,12 @@ export interface Conversation {
   lastMessageAt: number;
   /** The visitor's latest message, for queue previews. */
   preview: string | null;
+  /** How the visitor rated the chat once it ended. */
+  rating: Rating | null;
+  ratingComment: string | null;
 }
+
+export type Rating = 'good' | 'bad';
 
 export interface Message {
   id: string;
@@ -111,6 +116,8 @@ export interface WidgetSettings {
   departments: string[];
   /** The email field on the pre-chat form (the leave-a-message form always asks for it). */
   emailField: 'optional' | 'required' | 'hidden';
+  /** Ask visitors to rate the chat when it ends. */
+  ratings: boolean;
 }
 
 export const DEFAULT_WIDGET_SETTINGS: WidgetSettings = {
@@ -120,6 +127,7 @@ export const DEFAULT_WIDGET_SETTINGS: WidgetSettings = {
   offlineGreeting: "We're not online right now. Leave a message and we'll get back to you by email.",
   departments: DEFAULT_DEPARTMENTS,
   emailField: 'optional',
+  ratings: true,
 };
 
 export interface WidgetConfig extends WidgetSettings {
@@ -169,6 +177,8 @@ export interface HistoryEntry {
   messageCount: number;
   /** The visitor's first message. */
   preview: string | null;
+  rating: Rating | null;
+  ratingComment: string | null;
 }
 
 export interface HistoryPage {

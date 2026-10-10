@@ -8,7 +8,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useDesk } from '../lib/store';
 import { dateTime, duration, initials, visitorLabel } from '../lib/format';
-import { Avatar, Card, IconButton, Pill } from '../components/ui';
+import { Avatar, Card, IconButton, Pill, RatingPill } from '../components/ui';
 import { Transcript } from '../components/chat/Transcript';
 
 const PERIODS = [
@@ -47,6 +47,7 @@ export function History() {
   const status = params.get('status') ?? 'all';
   const agentId = params.get('agent') ?? '';
   const days = params.get('days') ?? '';
+  const rating = params.get('rating') ?? '';
   const selectedId = params.get('c');
 
   const set = (patch: Record<string, string | null>) =>
@@ -63,7 +64,7 @@ export function History() {
     );
   useEffect(() => set({ q: query || null }), [query]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filters = { q: query, status, agentId, days };
+  const filters = { q: query, status, agentId, days, rating };
   const history = useInfiniteQuery({
     queryKey: ['history', filters],
     initialPageParam: '',
@@ -73,6 +74,7 @@ export function History() {
       if (filters.status !== 'all') sp.set('status', filters.status);
       if (filters.agentId) sp.set('agentId', filters.agentId);
       if (filters.days) sp.set('days', filters.days);
+      if (filters.rating) sp.set('rating', filters.rating);
       if (pageParam) sp.set('cursor', pageParam);
       return api<HistoryPage>(`/history?${sp}`);
     },
@@ -80,7 +82,7 @@ export function History() {
   });
   const items = history.data?.pages.flatMap((p) => p.items) ?? [];
   const selected = items.find((i) => i.id === selectedId) ?? null;
-  const filtered = !!(query || status !== 'all' || agentId || days);
+  const filtered = !!(query || status !== 'all' || agentId || days || rating);
   const compact = !!selectedId;
 
   return (
@@ -118,6 +120,12 @@ export function History() {
               {t.name}
             </option>
           ))}
+        </select>
+        <select aria-label="Rating" className={selectClass} value={rating} onChange={(e) => set({ rating: e.target.value || null })}>
+          <option value="">Any rating</option>
+          <option value="good">👍 Good</option>
+          <option value="bad">👎 Bad</option>
+          <option value="any">Rated</option>
         </select>
         <select aria-label="Period" className={selectClass} value={days} onChange={(e) => set({ days: e.target.value || null })}>
           {PERIODS.map((p) => (
@@ -162,7 +170,14 @@ export function History() {
                 <span className="flex min-w-0 items-center gap-2.5">
                   <Avatar text={initials(e.visitorName)} size={30} />
                   <span className="min-w-0">
-                    <span className="block truncate font-semibold">{name(e)}</span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="truncate font-semibold">{name(e)}</span>
+                      {e.rating && (
+                        <span title={e.rating === 'good' ? 'Rated good' : 'Rated bad'} aria-label={e.rating === 'good' ? 'Rated good' : 'Rated bad'}>
+                          {e.rating === 'good' ? '👍' : '👎'}
+                        </span>
+                      )}
+                    </span>
                     <span className="block truncate text-xs text-ink-2">{e.visitorEmail ?? e.department ?? '—'}</span>
                   </span>
                 </span>
@@ -228,6 +243,12 @@ function ChatDetail({ id, entry, onClose }: { id: string; entry: HistoryEntry | 
               {c.endedAt && <span>· {duration(c.endedAt - c.startedAt)}</span>}
               {c.department && <Pill>{c.department}</Pill>}
               {c.status === 'ended' ? <Pill>Ended</Pill> : <Pill tone="success">Open</Pill>}
+              <RatingPill rating={c.rating} />
+            </div>
+          )}
+          {c?.ratingComment && (
+            <div className="mt-2 rounded-lg bg-canvas px-3 py-2 text-xs text-ink" data-testid="rating-comment">
+              “{c.ratingComment}”
             </div>
           )}
         </div>

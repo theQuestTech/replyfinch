@@ -6,6 +6,7 @@ import type {
   AgentClientEvents,
   AgentServerEvents,
   Conversation,
+  HistoryPage,
   Message,
   WidgetConfig,
   WidgetSettings,
@@ -178,6 +179,7 @@ describe('widget settings', () => {
       offlineGreeting: 'We are closed — leave a note.',
       departments: ['Orders', 'Returns'],
       emailField: 'required',
+      ratings: false,
     };
     expect((await call('PUT', '/settings/widget', daniel.token, next)).status).toBe(403);
     expect((await call('PUT', '/settings/widget', maya.token, { ...next, color: 'teal' })).status).toBe(400);
@@ -189,5 +191,50 @@ describe('widget settings', () => {
     const v = await visitor();
     expect(v.config).toMatchObject({ ...next, color: '#0F766E', accountName: 'Acme Books' });
     v.socket.disconnect();
+  });
+});
+
+describe('ratings', () => {
+  it('lets the visitor rate an ended chat; agents see it and can filter History by it', async () => {
+    const maya = await login('maya@replyfinch.dev');
+    const m = await connected(maya.token);
+    const v = await visitor();
+    const { conversation } = await emitAck<{ conversation: Conversation }>(v.socket, 'chat:start', {
+      name: 'Vera',
+      message: 'Where is my parcel?',
+      clientId: 'v1',
+    });
+    const early = await v.socket.timeout(5000).emitWithAck('chat:rate', { conversationId: conversation.id, rating: 'good' });
+    expect(early).toEqual({ ok: false, error: 'not_ended' });
+
+    await emitAck(m, 'message:send', { conversationId: conversation.id, body: 'It arrives tomorrow', clientId: 'm9' });
+    m.emit('chat:end', { conversationId: conversation.id });
+    await waitFor<Conversation>(m, 'conversation:update', (c) => c.id === conversation.id && c.status === 'ended');
+
+    const visitorSees: Message[] = [];
+    v.socket.on('message:new', (msg) => visitorSees.push(msg));
+    const rated = waitFor<Conversation>(m, 'conversation:update', (c) => c.id === conversation.id && !!c.rating);
+    const note = waitFor<Message>(m, 'message:new', (x) => x.conversationId === conversation.id && x.authorType === 'system');
+    await emitAck(v.socket, 'chat:rate', { conversationId: conversation.id, rating: 'good', comment: 'Super quick, thanks!' });
+    expect(await rated).toMatchObject({ rating: 'good', ratingComment: 'Super quick, thanks!' });
+    expect(await note).toMatchObject({ internal: true, body: 'Vera rated the chat 👍 Good: “Super quick, thanks!”' });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(visitorSees).toEqual([]); // the note is for agents only
+
+    // Commenting after the thumbs doesn't repeat the rating.
+    const comment = waitFor<Message>(m, 'message:new', (x) => x.conversationId === conversation.id && x.authorType === 'system');
+    await emitAck(v.socket, 'chat:rate', { conversationId: conversation.id, rating: 'good', comment: 'Really, thanks!' });
+    expect((await comment).body).toBe('Vera added a comment: “Really, thanks!”');
+
+    // Someone else's chat can't be rated.
+    const other = await visitor();
+    const res = await other.socket.timeout(5000).emitWithAck('chat:rate', { conversationId: conversation.id, rating: 'bad' });
+    expect(res).toEqual({ ok: false, error: 'not_found' });
+
+    const good = (await call<HistoryPage>('GET', '/history?rating=good', maya.token)).body.items;
+    expect(good.map((i) => i.id)).toEqual([conversation.id]);
+    expect(good[0]).toMatchObject({ rating: 'good', ratingComment: 'Really, thanks!' });
+    expect((await call<HistoryPage>('GET', '/history?rating=bad', maya.token)).body.items).toEqual([]);
+    m.disconnect();
   });
 });

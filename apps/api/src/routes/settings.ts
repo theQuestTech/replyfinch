@@ -10,7 +10,7 @@ import {
   widgetSettingsSchema,
   type Agent,
 } from '@replyfinch/shared';
-import { checkPassword, hashPassword } from '../auth';
+import { checkPassword, hashPassword, tokensValidFrom, type Auth } from '../auth';
 import type { Db } from '../db/client';
 import { users } from '../db/schema';
 import { newId } from '../ids';
@@ -18,12 +18,12 @@ import type { Realtime } from '../realtime';
 import type { ShortcutService } from '../services/shortcuts';
 import type { WidgetSettingsService } from '../services/widget-settings';
 
-type Deps = { db: Db; realtime: Realtime; shortcuts: ShortcutService; widgetSettings: WidgetSettingsService };
+type Deps = { db: Db; auth: Auth; realtime: Realtime; shortcuts: ShortcutService; widgetSettings: WidgetSettingsService };
 
 const firstIssue = (e: { issues: { message: string }[] }) => e.issues[0]?.message ?? 'invalid_input';
 
 /** Profile, team management (admins) and shortcuts. Registered behind agent auth. */
-export async function settingsRoutes(r: FastifyInstance, { db, realtime, shortcuts, widgetSettings }: Deps) {
+export async function settingsRoutes(r: FastifyInstance, { db, auth, realtime, shortcuts, widgetSettings }: Deps) {
   const requireAdmin = async (req: FastifyRequest, reply: FastifyReply) => {
     const [me] = await db.select({ role: users.role }).from(users).where(eq(users.id, req.agent.sub));
     if (me?.role !== 'admin') return reply.code(403).send({ error: 'admins_only' });
@@ -66,8 +66,9 @@ export async function settingsRoutes(r: FastifyInstance, { db, realtime, shortcu
     if (!u || !(await checkPassword(body.data.currentPassword, u.passwordHash))) {
       return reply.code(400).send({ error: 'Your current password is incorrect' });
     }
-    await db.update(users).set({ passwordHash: await hashPassword(body.data.newPassword) }).where(eq(users.id, u.id));
-    return { ok: true };
+    // Signs out every other browser; this one gets a fresh token.
+    await db.update(users).set({ passwordHash: await hashPassword(body.data.newPassword), tokensValidAfter: tokensValidFrom() }).where(eq(users.id, u.id));
+    return { ok: true, token: auth.signAgent({ sub: u.id, acc: u.accountId, name: u.name }) };
   });
 
   // ---------------- team (admins) ----------------
@@ -109,7 +110,8 @@ export async function settingsRoutes(r: FastifyInstance, { db, realtime, shortcu
     if (!body.success) return reply.code(400).send({ error: firstIssue(body.error) });
     const member = await getMember(req.agent.acc, req.params.id);
     if (!member) return reply.code(404).send({ error: 'not_found' });
-    await db.update(users).set({ passwordHash: await hashPassword(body.data.password) }).where(eq(users.id, member.id));
+    await db.update(users).set({ passwordHash: await hashPassword(body.data.password), tokensValidAfter: tokensValidFrom() }).where(eq(users.id, member.id));
+    await realtime.disconnectAgent(member.id); // signed out everywhere
     return { ok: true };
   });
 

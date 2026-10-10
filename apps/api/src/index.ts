@@ -2,6 +2,9 @@ import { buildApp } from './app';
 import { env } from './env';
 import { prepareDatabase } from './startup';
 
+// Log instead of crashing on a stray async error; one failed background task shouldn't drop every chat.
+process.on('unhandledRejection', (err) => console.error('[api] unhandled rejection', err));
+
 await prepareDatabase(env);
 const { app } = await buildApp(env);
 await app.listen({ port: env.PORT, host: '0.0.0.0' });

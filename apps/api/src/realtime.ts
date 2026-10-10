@@ -25,7 +25,7 @@ import type { Db } from './db/client';
 import { pageViews } from './db/schema';
 import { newId } from './ids';
 import { pushPage, toLiveVisitor, type Presence, type VisitorRecord } from './presence';
-import type { ConversationService } from './services/conversations';
+import { ConversationEndedError, isUniqueViolation, type ConversationService } from './services/conversations';
 import type { OfflineService } from './services/offline';
 import type { MailActions } from './services/mail-actions';
 import { EmailError } from './email';
@@ -61,7 +61,8 @@ interface Deps {
   stats: StatsService;
   corsOrigins: string[];
   leaveGraceMs?: number;
-  isActiveAgent: (userId: string) => Promise<boolean>;
+  isActiveAgent: (userId: string, iat?: number) => Promise<boolean>;
+  widgetSettings: { get: (acc: string) => Promise<{ ratings: boolean }> };
 }
 
 /**
@@ -85,8 +86,9 @@ function handle<A extends unknown[]>(
       await ready;
       await fn(...(args as A));
     } catch (err) {
-      console.error(`[realtime] ${event} failed`, err);
       const ack = args[args.length - 1];
+      if (err instanceof ConversationEndedError) return fail(ack, 'conversation_ended');
+      console.error(`[realtime] ${event} failed`, err);
       if (typeof ack === 'function') fail(ack, 'internal_error');
     }
   }
@@ -111,6 +113,13 @@ export function createRealtime(d: Deps) {
   const leaveTimers = new Map<string, NodeJS.Timeout>();
   let closing = false;
   const ctx = { isClosing: () => closing, inflight: new Set<Promise<unknown>>() };
+
+  /** Fixed-window counter in Redis: false once `key` was used more than `max` times in `windowSec`. */
+  async function allow(key: string, max: number, windowSec: number) {
+    const n = await d.redis.incr(`limit:${key}`);
+    if (n === 1) await d.redis.expire(`limit:${key}`, windowSec);
+    return n <= max;
+  }
 
   const toAgents = (acc: string) => agentsNs.to(`acc:${acc}`);
   const toVisitor = (vid: string) => visitorsNs.to(`vis:${vid}`);
@@ -152,6 +161,7 @@ export function createRealtime(d: Deps) {
     if (open) {
       const name = record?.name ?? 'The visitor';
       const ended = await d.conversations.end(open, { name, id: vid }, `${name} left the website`);
+      if (!ended) return; // someone else ended it first
       toAgents(acc).emit('message:new', ended.message);
       toAgents(acc).emit('conversation:update', await d.conversations.dto(ended.conversation));
       await broadcastTeam(acc);
@@ -195,10 +205,22 @@ export function createRealtime(d: Deps) {
     }
   }
 
+  /**
+   * How many tabs an agent really has open, across every API instance (via the Redis adapter).
+   * Counting the live sockets — instead of +1/−1 — can't drift after a crash or a race.
+   */
+  async function agentConns(uid: string, fallback: number) {
+    try {
+      return (await agentsNs.in(`agent:${uid}`).fetchSockets()).length;
+    } catch {
+      return fallback;
+    }
+  }
+
   async function setupAgent(socket: AgentSocket, uid: string, acc: string) {
     const prev = await d.presence.getAgent(acc, uid);
     const status: AgentStatus = prev && prev.status !== 'offline' ? prev.status : 'online';
-    await d.presence.putAgent(acc, uid, { status, conns: (prev?.conns ?? 0) + 1, lastSeenAt: Date.now() });
+    await d.presence.putAgent(acc, uid, { status, conns: await agentConns(uid, (prev?.conns ?? 0) + 1), lastSeenAt: Date.now() });
     const visitors = await d.presence.listVisitors(acc);
     socket.emit('visitors:snapshot', visitors.map((v) => toLiveVisitor(v)));
     await broadcastTeam(acc);
@@ -225,6 +247,7 @@ export function createRealtime(d: Deps) {
     on('visitor:page', async (p: Parameters<VisitorClientEvents['visitor:page']>[0]) => {
       const parsed = pageSchema.safeParse(p);
       if (!parsed.success) return;
+      if (!(await allow(`page:${vid}`, 60, 60))) return;
       const now = Date.now();
       const r = await d.presence.updateVisitor(acc, vid, (rec) => {
         if (!rec.referrer && parsed.data.referrer) rec.referrer = parsed.data.referrer;
@@ -257,6 +280,7 @@ export function createRealtime(d: Deps) {
     on('chat:start', async (...[p, ack]: Parameters<VisitorClientEvents['chat:start']>) => {
       const parsed = chatStartSchema.safeParse(p);
       if (!parsed.success) return fail(ack, 'invalid_input');
+      if (!(await allow(`start:${vid}`, 10, 3600))) return fail(ack, 'rate_limited');
       const existing = await d.conversations.openForVisitor(vid);
       if (existing) {
         return ack({
@@ -267,7 +291,19 @@ export function createRealtime(d: Deps) {
           },
         });
       }
-      const started = await d.conversations.start(acc, vid, parsed.data);
+      let started: Awaited<ReturnType<ConversationService['start']>>;
+      try {
+        started = await d.conversations.start(acc, vid, parsed.data);
+      } catch (err) {
+        if (!isUniqueViolation(err)) throw err;
+        // Another tab started a chat at the same moment: use that one.
+        const other = await d.conversations.openForVisitor(vid);
+        if (!other) throw err;
+        return ack({
+          ok: true,
+          data: { conversation: await d.conversations.dto(other), messages: await d.conversations.listMessages(other.id, { includeInternal: false }) },
+        });
+      }
       const conv = await d.conversations.dto(started.conversation);
       await d.presence.updateVisitor(acc, vid, (rec) => {
         rec.name = parsed.data.name;
@@ -290,10 +326,11 @@ export function createRealtime(d: Deps) {
       const conv = await d.conversations.get(acc, parsed.data.conversationId);
       if (!conv || conv.visitorId !== vid) return fail(ack, 'not_found');
       if (conv.status !== 'ended') return fail(ack, 'not_ended');
-      const key = `transcript-rate:${vid}`;
-      const sent = await d.redis.incr(key);
-      if (sent === 1) await d.redis.expire(key, 3600);
-      if (sent > TRANSCRIPTS_PER_HOUR) return fail(ack, 'rate_limited');
+      // Only real conversations (an agent replied), so this can't be used to send spam from the
+      // customer's domain; plus a cap per visitor and per account.
+      if (!conv.firstReplyAt || conv.initiatedBy === 'agent' && conv.participantIds.length === 0) return fail(ack, 'not_allowed');
+      if (!(await allow(`transcript:${vid}`, TRANSCRIPTS_PER_HOUR, 3600))) return fail(ack, 'rate_limited');
+      if (!(await allow(`transcript-acc:${acc}`, 200, 3600))) return fail(ack, 'rate_limited');
       const v = await d.visitors.get(acc, vid);
       if (v && !v.email) await d.visitors.patch(acc, vid, { email: parsed.data.email });
       try {
@@ -310,6 +347,8 @@ export function createRealtime(d: Deps) {
     on('chat:rate', async (...[p, ack]: Parameters<VisitorClientEvents['chat:rate']>) => {
       const parsed = chatRateSchema.safeParse(p);
       if (!parsed.success) return fail(ack, 'invalid_input');
+      if (!(await d.widgetSettings.get(acc)).ratings) return fail(ack, 'disabled');
+      if (!(await allow(`rate:${vid}`, 10, 3600))) return fail(ack, 'rate_limited');
       const conv = await d.conversations.get(acc, parsed.data.conversationId);
       if (!conv || conv.visitorId !== vid) return fail(ack, 'not_found');
       if (conv.status !== 'ended') return fail(ack, 'not_ended');
@@ -343,6 +382,7 @@ export function createRealtime(d: Deps) {
     on('message:send', async (...[p, ack]: Parameters<VisitorClientEvents['message:send']>) => {
       const parsed = messageSendSchema.safeParse(p);
       if (!parsed.success) return fail(ack, 'invalid_input');
+      if (!(await allow(`msg:${vid}`, 40, 60))) return fail(ack, 'rate_limited');
       const conv = await d.conversations.get(acc, parsed.data.conversationId);
       if (!conv || conv.visitorId !== vid) return fail(ack, 'not_found');
       if (conv.status === 'ended') return fail(ack, 'conversation_ended');
@@ -361,6 +401,8 @@ export function createRealtime(d: Deps) {
 
     on('typing', async (...[p]: Parameters<VisitorClientEvents['typing']>) => {
       if (!p || typeof p.conversationId !== 'string') return;
+      const conv = await d.conversations.get(acc, p.conversationId);
+      if (!conv || conv.visitorId !== vid) return;
       const record = await d.presence.getVisitor(acc, vid);
       toAgents(acc).emit('typing', {
         conversationId: p.conversationId,
@@ -375,6 +417,7 @@ export function createRealtime(d: Deps) {
       if (!conv || conv.visitorId !== vid || conv.status === 'ended') return;
       const record = await d.presence.getVisitor(acc, vid);
       const ended = await d.conversations.end(conv, { name: record?.name ?? 'Visitor', id: vid });
+      if (!ended) return; // someone else ended it first
       const dto = await d.conversations.dto(ended.conversation);
       toVisitor(vid).emit('message:new', ended.message);
       toVisitor(vid).emit('chat:ended', { conversationId: conv.id });
@@ -394,7 +437,12 @@ export function createRealtime(d: Deps) {
         vid,
         setTimeout(async () => {
           leaveTimers.delete(vid);
-          if ((await d.presence.visitorConns(vid)) === 0) await removeVisitor(acc, vid);
+          try {
+            if ((await d.presence.visitorConns(vid)) === 0) await removeVisitor(acc, vid);
+          } catch (err) {
+            // A database or Redis hiccup must never take the server down; the sweeper retries.
+            console.error('[realtime] visitor leave failed', err);
+          }
         }, d.leaveGraceMs ?? DEFAULT_LEAVE_GRACE_MS),
       );
     });
@@ -404,7 +452,7 @@ export function createRealtime(d: Deps) {
   agentsNs.use((socket, next) => {
     const claims = d.auth.verifyAgent(socket.handshake.auth?.token);
     if (!claims) return next(new Error('unauthorized'));
-    d.isActiveAgent(claims.sub)
+    d.isActiveAgent(claims.sub, claims.iat)
       .then((ok) => {
         if (!ok) return next(new Error('unauthorized'));
         socket.data.claims = claims;
@@ -471,7 +519,13 @@ export function createRealtime(d: Deps) {
       const visitor = await d.visitors.get(acc, parsed.data.visitorId);
       if (!visitor) return fail(ack, 'not_found');
       if (await d.conversations.openForVisitor(visitor.id)) return fail(ack, 'already_chatting');
-      const started = await d.conversations.startByAgent(acc, visitor.id, { id: uid, name }, parsed.data.body, parsed.data.clientId);
+      let started: Awaited<ReturnType<ConversationService['startByAgent']>>;
+      try {
+        started = await d.conversations.startByAgent(acc, visitor.id, { id: uid, name }, parsed.data.body, parsed.data.clientId);
+      } catch (err) {
+        if (isUniqueViolation(err)) return fail(ack, 'already_chatting'); // the visitor (or a colleague) just started one
+        throw err;
+      }
       const conv = await d.conversations.dto(started.conversation);
       await d.presence.updateVisitor(acc, visitor.id, (rec) => {
         rec.pastChats += 1;
@@ -501,6 +555,7 @@ export function createRealtime(d: Deps) {
         target = { department: parsed.data.department! };
       }
       const res = await d.conversations.transfer(conv, { id: uid, name }, target, parsed.data.note || undefined);
+      if (!res) return fail(ack, 'conversation_ended');
       const dto = await d.conversations.dto(res.conversation);
       ack({ ok: true, data: dto });
       for (const m of res.messages) {
@@ -528,6 +583,7 @@ export function createRealtime(d: Deps) {
       const conv = p && (await d.conversations.get(acc, p.conversationId));
       if (!conv || conv.status === 'ended') return;
       const ended = await d.conversations.end(conv, { name, id: uid });
+      if (!ended) return; // someone else ended it first
       const dto = await d.conversations.dto(ended.conversation);
       toVisitor(conv.visitorId).emit('message:new', ended.message);
       toVisitor(conv.visitorId).emit('chat:ended', { conversationId: conv.id });
@@ -540,13 +596,13 @@ export function createRealtime(d: Deps) {
     on('agent:status', async (...[p]: Parameters<AgentClientEvents['agent:status']>) => {
       if (!p || !['online', 'away'].includes(p.status)) return;
       const cur = await d.presence.getAgent(acc, uid);
-      await d.presence.putAgent(acc, uid, { status: p.status, conns: cur?.conns ?? 1, lastSeenAt: Date.now() });
+      await d.presence.putAgent(acc, uid, { status: p.status, conns: await agentConns(uid, cur?.conns ?? 1), lastSeenAt: Date.now() });
       await broadcastTeam(acc);
     });
 
     on('disconnect', async () => {
       const cur = await d.presence.getAgent(acc, uid);
-      const conns = Math.max((cur?.conns ?? 1) - 1, 0);
+      const conns = await agentConns(uid, Math.max((cur?.conns ?? 1) - 1, 0));
       await d.presence.putAgent(acc, uid, { status: cur?.status ?? 'online', conns, lastSeenAt: Date.now() });
       await broadcastTeam(acc);
     });
@@ -557,28 +613,53 @@ export function createRealtime(d: Deps) {
   // instance never saw their disconnect) and announces browsing → idle changes.
   async function sweep(now = Date.now()) {
     for (const acc of await d.presence.liveAccounts()) {
-      // Chats whose visitor is gone (e.g. an API instance died before seeing the disconnect).
-      const online = new Set((await d.presence.listVisitors(acc)).map((r) => r.id));
-      for (const c of await d.conversations.listOpen(acc)) {
-        if (online.has(c.visitorId) || now - c.lastMessageAt < OFFLINE_AFTER_MS) continue;
-        const conv = await d.conversations.get(acc, c.id);
-        if (!conv) continue;
-        const name = c.visitorName ?? 'The visitor';
-        const ended = await d.conversations.end(conv, { name, id: c.visitorId }, `${name} left the website`);
-        toAgents(acc).emit('message:new', ended.message);
-        toAgents(acc).emit('conversation:update', await d.conversations.dto(ended.conversation));
-      }
-      for (const r of await d.presence.listVisitors(acc)) {
-        if (now - r.lastSeenAt > OFFLINE_AFTER_MS) {
-          await removeVisitor(acc, r.id);
-        } else if (toLiveVisitor(r, now).state !== r.lastState) {
-          await broadcastVisitor(r);
-        }
+      // One account's trouble must not stop the others from being swept.
+      try {
+        await sweepAccount(acc, now);
+      } catch (err) {
+        console.error(`[realtime] sweep of ${acc} failed`, err);
       }
     }
   }
+
+  async function sweepAccount(acc: string, now: number) {
+    const visitors = await d.presence.listVisitors(acc);
+    // Chats whose visitor is gone (e.g. an API instance died before seeing the disconnect).
+    const online = new Set(visitors.map((r) => r.id));
+    const open = await d.conversations.listOpenRows(acc);
+    for (const conv of open) {
+      if (online.has(conv.visitorId) || now - conv.lastMessageAt.getTime() < OFFLINE_AFTER_MS) continue;
+      const name = (await d.visitors.get(acc, conv.visitorId))?.name ?? 'The visitor';
+      const ended = await d.conversations.end(conv, { name, id: conv.visitorId }, `${name} left the website`);
+      if (!ended) continue; // someone else ended it first
+      toAgents(acc).emit('message:new', ended.message);
+      toAgents(acc).emit('conversation:update', await d.conversations.dto(ended.conversation));
+    }
+    for (const r of visitors) {
+      if (now - r.lastSeenAt > OFFLINE_AFTER_MS) {
+        await removeVisitor(acc, r.id);
+      } else if (toLiveVisitor(r, now).state !== r.lastState) {
+        await broadcastVisitor(r);
+      }
+    }
+    // Agents still counted as connected after a crash: recount their real sockets.
+    let teamChanged = false;
+    let agentsOnline = 0;
+    for (const [uid, a] of Object.entries(await d.presence.listAgents(acc))) {
+      if (a.conns <= 0) continue;
+      const conns = await agentConns(uid, a.conns);
+      if (conns !== a.conns) {
+        await d.presence.putAgent(acc, uid, { ...a, conns });
+        teamChanged = true;
+      }
+      if (conns > 0) agentsOnline++;
+    }
+    if (teamChanged) await broadcastTeam(acc);
+    if (visitors.length === 0 && agentsOnline === 0 && open.length === 0) await d.presence.dropLiveAccount(acc);
+  }
+
   const sweeper = setInterval(() => {
-    d.presence.withLock('sweep', SWEEP_INTERVAL_MS - 1000, () => sweep()).catch(() => {});
+    d.presence.withLock('sweep', SWEEP_INTERVAL_MS - 1000, () => sweep()).catch((err) => console.error('[realtime] sweep failed', err));
   }, SWEEP_INTERVAL_MS);
   sweeper.unref();
 

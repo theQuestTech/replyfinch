@@ -29,7 +29,13 @@ export function Login() {
             });
             login(res.token, res.agent);
           } catch (err) {
-            setError(err instanceof ApiError && err.status === 401 ? 'Wrong email or password.' : 'Could not reach the server.');
+            setError(
+              err instanceof ApiError && err.status === 401
+                ? 'Wrong email or password.'
+                : err instanceof ApiError && err.status === 429
+                  ? 'Too many attempts. Please wait a few minutes and try again.'
+                  : 'Could not reach the server.',
+            );
           } finally {
             setBusy(false);
           }

@@ -654,6 +654,7 @@ class ReplyfinchWidget {
   private renderTranscript() {
     const conv = this.conversation;
     if (!conv || !this.config?.emailTranscripts || !this.socket) return;
+    if (!this.messages.some((m) => m.authorType === 'agent' && !m.internal)) return; // nothing worth sending yet
     const t = this.transcript?.conversationId === conv.id ? this.transcript : null;
     const box = el('div', { class: 'rate', 'data-rf': 'transcript' });
     if (t?.sentTo) {

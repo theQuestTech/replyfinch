@@ -6,6 +6,8 @@ export interface AgentClaims {
   sub: string; // user id
   acc: string; // account id
   name: string;
+  /** Issued-at (seconds), set by jsonwebtoken. */
+  iat?: number;
 }
 
 export interface VisitorClaims {
@@ -13,6 +15,13 @@ export interface VisitorClaims {
   sub: string; // visitor id
   acc: string;
 }
+
+// Compared against when the email doesn't exist, so a login takes the same time either way.
+const DUMMY_HASH = bcrypt.hashSync('replyfinch-timing-equalizer', 10);
+export const dummyPasswordCheck = (password: string) => bcrypt.compare(password, DUMMY_HASH);
+
+/** Whole seconds, matching JWT "iat": tokens issued from this moment on stay valid. */
+export const tokensValidFrom = (d = new Date()) => new Date(Math.floor(d.getTime() / 1000) * 1000);
 
 export function createAuth(secret: string) {
   return {

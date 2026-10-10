@@ -85,7 +85,12 @@ export function createPresence(redis: Redis) {
       return raw ? (JSON.parse(raw) as AgentPresence) : null;
     },
     async putAgent(acc: string, uid: string, p: AgentPresence) {
-      await redis.hset(k.agents(acc), uid, JSON.stringify(p));
+      // Accounts with agents are swept too, so stale agent presence gets corrected.
+      await redis.multi().hset(k.agents(acc), uid, JSON.stringify(p)).sadd(k.liveAccounts, acc).exec();
+    },
+    /** Stop sweeping an account that has nobody online. */
+    async dropLiveAccount(acc: string) {
+      await redis.srem(k.liveAccounts, acc);
     },
     async listAgents(acc: string): Promise<Record<string, AgentPresence>> {
       const all = await redis.hgetall(k.agents(acc));

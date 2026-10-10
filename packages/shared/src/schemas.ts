@@ -14,8 +14,11 @@ export const widgetSessionSchema = z.object({
   timezone: z.string().max(64).optional(),
 });
 
+/** Only web addresses: they're shown to agents as links. */
+const webUrl = z.string().max(2048).regex(/^https?:\/\//i);
+
 export const pageSchema = z.object({
-  url: z.string().max(2048),
+  url: webUrl,
   title: z.string().max(512),
   referrer: z.string().max(2048).nullish(),
 });
@@ -45,7 +48,7 @@ export const visitorPatchSchema = z.object({
   email: z.union([z.email(), z.literal('')]).nullable().optional(),
   phone: z.string().max(40).nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
-  tags: z.array(z.string().trim().min(1).max(40)).max(30).optional(),
+  tags: z.array(z.string().trim().toLowerCase().min(1).max(40)).max(30).optional(),
 });
 
 export const chatInitiateSchema = z.object({
@@ -154,7 +157,7 @@ export const offlineMessageSchema = z.object({
   phone,
   department: z.string().max(120).optional(),
   message: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH),
-  pageUrl: z.string().max(2048).optional(),
+  pageUrl: webUrl.optional(),
 });
 
 export const offlineStatusSchema = z.object({ status: z.enum(['new', 'handled']) });

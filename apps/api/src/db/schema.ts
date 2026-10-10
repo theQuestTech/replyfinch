@@ -27,6 +27,8 @@ export const users = pgTable(
     maxChats: integer('max_chats').notNull().default(4),
     /** Removed agents are deactivated, not deleted, so their chat history keeps its author. */
     active: boolean('active').notNull().default(true),
+    /** Sign-in tokens issued before this moment are rejected (set when the password changes). */
+    tokensValidAfter: timestamp('tokens_valid_after', { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('users_email_idx').on(t.email), index('users_account_idx').on(t.accountId)],
@@ -51,7 +53,7 @@ export const visitors = pgTable(
     firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('visitors_account_idx').on(t.accountId)],
+  (t) => [index('visitors_account_idx').on(t.accountId), index('visitors_account_seen_idx').on(t.accountId, t.lastSeenAt)],
 );
 
 export const pageViews = pgTable(
@@ -92,6 +94,9 @@ export const conversations = pgTable(
   (t) => [
     index('conversations_account_status_idx').on(t.accountId, t.status),
     index('conversations_visitor_idx').on(t.visitorId),
+    // A visitor has at most one open chat (two tabs starting at once can't create two).
+    uniqueIndex('conversations_one_open_per_visitor').on(t.visitorId).where(sql`status in ('waiting', 'active')`),
+    index('conversations_account_started_idx').on(t.accountId, t.startedAt),
   ],
 );
 
@@ -150,7 +155,10 @@ export const offlineMessages = pgTable(
     handledAt: timestamp('handled_at', { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [index('offline_messages_account_idx').on(t.accountId, t.status, t.createdAt)],
+  (t) => [
+    index('offline_messages_account_idx').on(t.accountId, t.status, t.createdAt),
+    index('offline_messages_visitor_idx').on(t.visitorId),
+  ],
 );
 
 /** Emails agents sent in answer to an offline message. */

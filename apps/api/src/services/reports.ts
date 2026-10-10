@@ -1,4 +1,4 @@
-import { sql } from 'drizzle-orm';
+import { sql, type SQL } from 'drizzle-orm';
 import type { Report, ReportSummary } from '@replyfinch/shared';
 import type { Db } from '../db/client';
 
@@ -22,6 +22,13 @@ export function addDays(date: string, n: number): string {
 }
 
 const num = (v: unknown) => Number(v ?? 0);
+
+/**
+ * `col` falls on a local calendar day between `from` and `to` (inclusive) in time zone `tz`.
+ * Written as a plain range on the column so Postgres can use its index.
+ */
+const inLocalDays = (col: SQL, tz: string, from: string, to: string) =>
+  sql`${col} >= (${from}::date)::timestamp at time zone ${tz} and ${col} < (${to}::date + 1)::timestamp at time zone ${tz}`;
 const numOrNull = (v: unknown) => (v == null ? null : Math.round(Number(v)));
 
 export function createReportService(db: Db) {
@@ -29,7 +36,7 @@ export function createReportService(db: Db) {
   const rows = async (q: ReturnType<typeof sql>) => (await db.execute(q)) as unknown as Row[];
 
   async function summary(acc: string, tz: string, from: string, to: string): Promise<ReportSummary> {
-    const inPeriod = sql`(started_at at time zone ${tz})::date between ${from}::date and ${to}::date`;
+    const inPeriod = inLocalDays(sql`started_at`, tz, from, to);
     const [r] = await rows(sql`
       select
         count(*) as chats,
@@ -42,7 +49,7 @@ export function createReportService(db: Db) {
       from conversations where account_id = ${acc} and ${inPeriod}`);
     const [o] = await rows(sql`
       select count(*) as n from offline_messages
-      where account_id = ${acc} and (created_at at time zone ${tz})::date between ${from}::date and ${to}::date`);
+      where account_id = ${acc} and ${inLocalDays(sql`created_at`, tz, from, to)}`);
     return {
       chats: num(r?.chats),
       visitorChats: num(r?.visitor_chats),
@@ -60,7 +67,7 @@ export function createReportService(db: Db) {
       const tz = safeTimezone(timezone);
       const to = today(tz, now);
       const from = addDays(to, -(days - 1));
-      const inPeriod = sql`(c.started_at at time zone ${tz})::date between ${from}::date and ${to}::date`;
+      const inPeriod = inLocalDays(sql`c.started_at`, tz, from, to);
 
       const [current, previous, dayRows, hourRows, deptRows, agentRows] = await Promise.all([
         summary(acc, tz, from, to),

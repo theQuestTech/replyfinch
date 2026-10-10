@@ -8,6 +8,7 @@ import { desktopPermission, playChime, requestDesktopPermission, showDesktop, us
 export function Profile() {
   const agent = useAuth((s) => s.agent)!;
   const setAgent = useAuth((s) => s.setAgent);
+  const login = useAuth((s) => s.login);
   const [name, setName] = useState(agent.name);
   const [nameMsg, setNameMsg] = useState<string | null>(null);
 
@@ -36,7 +37,9 @@ export function Profile() {
     if (next !== confirm) return setPwError('The new passwords don’t match');
     setBusy(true);
     try {
-      await api('/me/password', { method: 'POST', body: JSON.stringify({ currentPassword: current, newPassword: next }) });
+      // Other browsers are signed out; this one gets a fresh sign-in token.
+      const res = await api<{ token?: string }>('/me/password', { method: 'POST', body: JSON.stringify({ currentPassword: current, newPassword: next }) });
+      if (res.token) login(res.token, agent);
       setPwDone(true);
       setCurrent('');
       setNext('');
@@ -84,7 +87,7 @@ export function Profile() {
             <Button variant="primary" type="submit" disabled={busy}>
               {busy ? 'Changing…' : 'Change password'}
             </Button>
-            {pwDone && <span className="text-sm font-medium text-success">Password changed</span>}
+            {pwDone && <span className="text-sm font-medium text-success">Password changed. Other devices have been signed out.</span>}
           </div>
         </form>
       </Card>

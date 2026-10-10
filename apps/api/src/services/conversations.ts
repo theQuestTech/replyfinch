@@ -9,6 +9,16 @@ type MsgRow = typeof messages.$inferSelect;
 
 export const OPEN_STATUSES = ['waiting', 'active'] as const;
 
+/** The chat ended between reading it and changing it (visitor left, someone else ended it). */
+export class ConversationEndedError extends Error {
+  constructor() {
+    super('conversation_ended');
+  }
+}
+
+/** Postgres unique violation, e.g. a second open chat for the same visitor. */
+export const isUniqueViolation = (err: unknown) => (err as { code?: string; cause?: { code?: string } })?.code === '23505' || (err as { cause?: { code?: string } })?.cause?.code === '23505';
+
 export function messageDto(m: MsgRow): Message {
   return {
     id: m.id,
@@ -24,35 +34,47 @@ export function messageDto(m: MsgRow): Message {
 }
 
 export function createConversationService(db: Db) {
-  async function dto(row: ConvRow): Promise<Conversation> {
-    const [v] = await db.select({ name: visitors.name }).from(visitors).where(eq(visitors.id, row.visitorId));
-    const [last] = await db
-      .select({ body: messages.body })
-      .from(messages)
-      .where(and(eq(messages.conversationId, row.id), eq(messages.authorType, 'visitor')))
-      .orderBy(desc(messages.createdAt))
-      .limit(1);
-    const assignee = row.assigneeId
-      ? (await db.select({ name: users.name }).from(users).where(eq(users.id, row.assigneeId)))[0]
-      : undefined;
-    return {
+  /** Build many conversation DTOs with a fixed number of queries (not 3 per conversation). */
+  async function dtoMany(rows: ConvRow[]): Promise<Conversation[]> {
+    if (rows.length === 0) return [];
+    const ids = rows.map((r) => r.id);
+    const visitorIds = [...new Set(rows.map((r) => r.visitorId))];
+    const assigneeIds = [...new Set(rows.map((r) => r.assigneeId).filter((x): x is string => !!x))];
+    const [vs, as, lasts] = await Promise.all([
+      db.select({ id: visitors.id, name: visitors.name }).from(visitors).where(inArray(visitors.id, visitorIds)),
+      assigneeIds.length ? db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, assigneeIds)) : [],
+      // The visitor's latest message per conversation, for queue previews.
+      db
+        .selectDistinctOn([messages.conversationId], { conversationId: messages.conversationId, body: messages.body })
+        .from(messages)
+        .where(and(inArray(messages.conversationId, ids), eq(messages.authorType, 'visitor')))
+        .orderBy(messages.conversationId, desc(messages.createdAt)),
+    ]);
+    const visitorName = new Map(vs.map((v) => [v.id, v.name]));
+    const assigneeName = new Map(as.map((a) => [a.id, a.name]));
+    const preview = new Map(lasts.map((l) => [l.conversationId, l.body]));
+    return rows.map((row) => ({
       id: row.id,
       accountId: row.accountId,
       visitorId: row.visitorId,
-      visitorName: v?.name ?? null,
+      visitorName: visitorName.get(row.visitorId) ?? null,
       status: row.status,
       assigneeId: row.assigneeId,
-      assigneeName: assignee?.name ?? null,
+      assigneeName: row.assigneeId ? (assigneeName.get(row.assigneeId) ?? null) : null,
       participantIds: row.participantIds,
       department: row.department,
       startedAt: row.startedAt.getTime(),
       firstReplyAt: row.firstReplyAt?.getTime() ?? null,
       endedAt: row.endedAt?.getTime() ?? null,
       lastMessageAt: row.lastMessageAt.getTime(),
-      preview: last?.body ?? null,
+      preview: preview.get(row.id) ?? null,
       rating: row.rating,
       ratingComment: row.ratingComment,
-    };
+    }));
+  }
+
+  async function dto(row: ConvRow): Promise<Conversation> {
+    return (await dtoMany([row]))[0]!;
   }
 
   async function insertMessage(
@@ -118,12 +140,16 @@ export function createConversationService(db: Db) {
       return rows.map(messageDto);
     },
 
-    async listOpen(accountId: string) {
-      const rows = await db
+    /** Open chats as raw rows (cheap; for the background sweeper). */
+    async listOpenRows(accountId: string) {
+      return db
         .select()
         .from(conversations)
         .where(and(eq(conversations.accountId, accountId), inArray(conversations.status, [...OPEN_STATUSES])));
-      return Promise.all(rows.map(dto));
+    },
+
+    async listOpen(accountId: string) {
+      return dtoMany(await this.listOpenRows(accountId));
     },
 
     async listForVisitor(accountId: string, visitorId: string) {
@@ -131,8 +157,9 @@ export function createConversationService(db: Db) {
         .select()
         .from(conversations)
         .where(and(eq(conversations.accountId, accountId), eq(conversations.visitorId, visitorId)))
-        .orderBy(sql`${conversations.startedAt} desc`);
-      return Promise.all(rows.map(dto));
+        .orderBy(sql`${conversations.startedAt} desc`)
+        .limit(50);
+      return dtoMany(rows);
     },
 
     /** Visitor starts a chat from the widget: conversation + first message + bot acknowledgement. */
@@ -222,9 +249,11 @@ export function createConversationService(db: Db) {
             status: 'active',
             firstReplyAt: conv.firstReplyAt ?? now,
           })
-          .where(eq(conversations.id, conv.id))
+          // Never revive a chat that ended in the meantime.
+          .where(and(eq(conversations.id, conv.id), inArray(conversations.status, [...OPEN_STATUSES])))
           .returning();
-        current = updated!;
+        if (!updated) throw new ConversationEndedError();
+        current = updated;
         joined = true;
         const sys = await insertMessage(current, {
           authorType: 'system',
@@ -270,8 +299,9 @@ export function createConversationService(db: Db) {
                 participantIds: sql`array_remove(${conversations.participantIds}, ${from.id})`,
               },
         )
-        .where(eq(conversations.id, conv.id))
+        .where(and(eq(conversations.id, conv.id), inArray(conversations.status, [...OPEN_STATUSES])))
         .returning();
+      if (!updated) return null;
       const out: Message[] = [];
       const sys = await insertMessage(updated!, {
         authorType: 'system',
@@ -319,15 +349,17 @@ export function createConversationService(db: Db) {
       const [updated] = await db
         .update(conversations)
         .set({ status: 'ended', endedAt: new Date() })
-        .where(eq(conversations.id, conv.id))
+        // Only the first of several simultaneous "end"s (visitor left, agent ended, sweeper) wins.
+        .where(and(eq(conversations.id, conv.id), inArray(conversations.status, [...OPEN_STATUSES])))
         .returning();
-      const sys = await insertMessage(updated!, {
+      if (!updated) return null;
+      const sys = await insertMessage(updated, {
         authorType: 'system',
         authorId: by.id,
         authorName: by.name,
         body: note,
       });
-      return { conversation: updated!, message: messageDto(sys.message) };
+      return { conversation: updated, message: messageDto(sys.message) };
     },
   };
 }

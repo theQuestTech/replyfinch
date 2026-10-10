@@ -16,7 +16,7 @@ import {
   type EmailStatus,
   type WidgetConfig,
 } from '@replyfinch/shared';
-import { checkPassword, createAuth, type AgentClaims } from './auth';
+import { checkPassword, createAuth, dummyPasswordCheck, type AgentClaims } from './auth';
 import { createDb } from './db/client';
 import { users } from './db/schema';
 import type { Env } from './env';
@@ -41,8 +41,12 @@ declare module 'fastify' {
   }
 }
 
-export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?: Mailer } = {}) {
-  const app = Fastify({ logger: env.NODE_ENV === 'development' ? { level: 'info' } : env.NODE_ENV === 'production' });
+export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?: Mailer; rateLimit?: boolean } = {}) {
+  const app = Fastify({
+    logger: env.NODE_ENV === 'development' ? { level: 'info' } : env.NODE_ENV === 'production',
+    // Railway (and most hosts) put a proxy in front: use the client's real IP for rate limits.
+    trustProxy: true,
+  });
   const { db, sql } = createDb(env.DATABASE_URL);
   const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 3 });
   const auth = createAuth(env.JWT_SECRET);
@@ -66,6 +70,30 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?:
     if (status >= 500) req.log.error(err);
     reply.code(status).send({ error: status >= 500 ? 'internal_error' : err.message });
   });
+
+  // Brute-force and flood protection, shared across API instances through Redis. On in production
+  // (tests and local development sign in many times a minute from one address).
+  const limiting = opts.rateLimit ?? env.NODE_ENV === 'production';
+  // Each limit has its own fixed-window counter in Redis, per client address unless a key is given.
+  const limit = (name: string, max: number, windowSec: number, key: (req: FastifyRequest) => string = (req) => req.ip) =>
+    limiting
+      ? [
+          async (req: FastifyRequest, reply: FastifyReply) => {
+            const k = `limit:${name}:${key(req)}`;
+            let n = 0;
+            try {
+              n = await redis.incr(k);
+              if (n === 1) await redis.expire(k, windowSec);
+            } catch {
+              return; // Redis trouble: let the request through rather than lock everyone out
+            }
+            if (n > max) {
+              const ttl = await redis.ttl(k).catch(() => windowSec);
+              return reply.code(429).header('retry-after', String(Math.max(ttl, 1))).send({ error: 'Too many attempts — please wait a few minutes and try again' });
+            }
+          },
+        ]
+      : [];
 
   // The widget is embedded on customers' websites, so /widget/* accepts any origin
   // (it is authenticated by account id + visitor token). Everything else is limited
@@ -91,19 +119,22 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?:
     stats,
     corsOrigins: env.corsOrigins,
     leaveGraceMs: opts.leaveGraceMs,
-    isActiveAgent: (id: string) => isActiveAgent(id),
+    isActiveAgent: (id: string, iat?: number) => isActiveAgent(id, iat),
+    widgetSettings,
   });
 
   // Removed agents lose access immediately, even with an unexpired token.
-  async function isActiveAgent(userId: string) {
-    const [u] = await db.select({ active: users.active }).from(users).where(eq(users.id, userId));
-    return !!u?.active;
+  // ...and so do sign-ins from before a password change.
+  async function isActiveAgent(userId: string, iat?: number) {
+    const [u] = await db.select({ active: users.active, validAfter: users.tokensValidAfter }).from(users).where(eq(users.id, userId));
+    if (!u?.active) return false;
+    return !u.validAfter || (iat ?? 0) * 1000 >= u.validAfter.getTime();
   }
 
   async function requireAgent(req: FastifyRequest, reply: FastifyReply) {
     const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
     const claims = auth.verifyAgent(token);
-    if (!claims || !(await isActiveAgent(claims.sub))) return reply.code(401).send({ error: 'unauthorized' });
+    if (!claims || !(await isActiveAgent(claims.sub, claims.iat))) return reply.code(401).send({ error: 'unauthorized' });
     req.agent = claims;
   }
 
@@ -115,11 +146,17 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?:
   app.get('/health', async () => ({ ok: true, version }));
 
   // ---------------- auth ----------------
-  app.post('/auth/login', async (req, reply) => {
+  // 10 tries per 5 minutes for one email from one address, 50 per address overall.
+  const loginKey = (req: FastifyRequest) => `${req.ip}:${String((req.body as { email?: unknown })?.email ?? '').toLowerCase()}`;
+  app.post('/auth/login', { preHandler: [...limit('login-ip', 50, 300), ...limit('login', 10, 300, loginKey)] }, async (req, reply) => {
     const body = loginSchema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid_input' });
     const [u] = await db.select().from(users).where(eq(users.email, body.data.email.toLowerCase()));
-    if (!u || !u.active || !(await checkPassword(body.data.password, u.passwordHash))) {
+    if (!u) {
+      await dummyPasswordCheck(body.data.password);
+      return reply.code(401).send({ error: 'invalid_credentials' });
+    }
+    if (!u.active || !(await checkPassword(body.data.password, u.passwordHash))) {
       return reply.code(401).send({ error: 'invalid_credentials' });
     }
     const agent: Agent = { id: u.id, accountId: u.accountId, name: u.name, email: u.email, role: u.role };
@@ -129,7 +166,7 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?:
   // ---------------- agent API ----------------
   app.register(async (r) => {
     r.addHook('preHandler', requireAgent);
-    await settingsRoutes(r, { db, realtime, shortcuts, widgetSettings });
+    await settingsRoutes(r, { db, auth, realtime, shortcuts, widgetSettings });
 
     r.get('/me', async (req) => {
       const [u] = await db.select().from(users).where(eq(users.id, req.agent.sub));
@@ -262,7 +299,8 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?:
   });
 
   // ---------------- widget API ----------------
-  app.post('/widget/session', async (req, reply) => {
+  // Each new session can create a visitor: 30 a minute per address is plenty for real visitors.
+  app.post('/widget/session', { preHandler: limit('session', 30, 60) }, async (req, reply) => {
     const body = widgetSessionSchema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: 'invalid_input' });
     const account = await visitors.accountExists(body.data.accountId);

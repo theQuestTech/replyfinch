@@ -320,6 +320,7 @@ class ReplyfinchWidget {
     }
     this.open = force ?? !this.open;
     this.panel.hidden = !this.open;
+    this.wrap.classList.toggle('open', this.open);
     if (this.open) {
       this.setUnread(0);
       this.scrollDown();

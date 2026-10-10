@@ -32,7 +32,12 @@ export const styles = `
   .popout + .close { margin-left: auto; }
   .rf { right: 12px; bottom: 12px; }
   .rf.left { right: auto; left: 12px; }
-  .panel { position: fixed; inset: 0; width: auto; height: auto; max-height: none; border-radius: 0; }
+  .panel { position: fixed; inset: 0; width: auto; height: auto; max-height: none; border-radius: 0;
+    padding-bottom: env(safe-area-inset-bottom); }
+  /* The open chat fills the screen; the bubble would cover the send button. */
+  .rf.open .launcher { display: none; }
+  /* 16px stops iOS Safari zooming in when a field is focused. */
+  input, select, textarea { font-size: 16px; }
 }
 .header { background: var(--brand); color: var(--on-brand); padding: 16px 16px 18px; display: flex; gap: 12px; align-items: center; }
 .logo { width: 40px; height: 40px; border-radius: 12px; background: var(--gold); display: grid; place-items: center; flex: none; }

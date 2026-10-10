@@ -92,7 +92,9 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number } = {}) {
     req.agent = claims;
   }
 
-  app.get('/health', async () => ({ ok: true }));
+  // `version` is the deployed commit (Railway sets RAILWAY_GIT_COMMIT_SHA), to check a deploy went out.
+  const version = process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? null;
+  app.get('/health', async () => ({ ok: true, version }));
 
   // ---------------- auth ----------------
   app.post('/auth/login', async (req, reply) => {

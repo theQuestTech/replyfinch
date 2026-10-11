@@ -177,3 +177,327 @@ body {
     background-position: 0 0;
   }
 }
+
+/* ---------------------------------------------------------------- motion */
+.nav-link {
+  @apply relative rounded-lg px-3 py-2 transition-colors hover:text-white;
+}
+.nav-link::after {
+  content: '';
+  @apply absolute right-3 bottom-1 left-3 h-0.5 origin-left scale-x-0 rounded-full bg-gold transition-transform duration-300;
+}
+.nav-link:hover::after,
+.nav-link[aria-current='page']::after {
+  @apply scale-x-100;
+}
+.nav-link[aria-current='page'] {
+  @apply text-white;
+}
+.site-header.scrolled {
+  box-shadow: 0 10px 30px -12px rgba(8, 14, 30, 0.6);
+}
+
+/* Scroll reveals (only when JavaScript runs: the "js" class is set in <head>). */
+.js [data-reveal] {
+  transition:
+    opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+.js [data-reveal]:not(.is-visible) {
+  opacity: 0;
+  transform: translateY(28px);
+}
+.js [data-reveal='left']:not(.is-visible) {
+  transform: translateX(-36px);
+}
+.js [data-reveal='right']:not(.is-visible) {
+  transform: translateX(36px);
+}
+.js [data-reveal='zoom']:not(.is-visible) {
+  transform: scale(0.94);
+}
+
+/* The hero screenshot leans back and straightens on scroll. */
+[data-tilt] {
+  perspective: 1600px;
+}
+[data-tilt] > * {
+  transform: rotateX(var(--tilt, 0deg)) scale(var(--tilt-scale, 1));
+  transform-origin: 50% 0;
+  will-change: transform;
+}
+
+/* Cards lift; their icon gives a little bounce. */
+.card-lift {
+  @apply transition duration-300 hover:-translate-y-1.5 hover:border-primary/30 hover:shadow-[0_18px_40px_-18px_rgba(20,33,61,0.35)];
+}
+.card-lift:hover .card-icon {
+  animation: icon-pop 0.6s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+@keyframes icon-pop {
+  40% {
+    transform: scale(1.18) rotate(-8deg);
+  }
+}
+.shot-hover {
+  @apply transition duration-500 hover:-translate-y-1 hover:shadow-[0_34px_70px_-24px_rgba(20,33,61,0.45)];
+}
+
+/* A light sweep across the main buttons on hover. */
+.shine {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.shine::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.55) 50%, transparent 70%);
+  transform: translateX(-120%);
+}
+.shine:hover::after {
+  transition: transform 0.75s ease;
+  transform: translateX(120%);
+}
+
+/* Floating glow behind the hero. */
+.float-slow {
+  animation: float 14s ease-in-out infinite alternate;
+}
+@keyframes float {
+  to {
+    transform: translate(-46%, 40px) scale(1.08);
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 2s ease-out infinite;
+}
+@keyframes pulse-dot {
+  0% {
+    box-shadow: 0 0 0 0 rgba(255, 201, 60, 0.7);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 8px rgba(255, 201, 60, 0);
+  }
+}
+
+/* Typed code. */
+.typing-caret::after {
+  content: '▍';
+  margin-left: 1px;
+  color: #ffc93c;
+  animation: blink 1s steps(2, start) infinite;
+}
+@keyframes blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+/* "How it works": a line that draws between the steps. */
+.steps-line {
+  position: relative;
+}
+.steps-line::before {
+  content: '';
+  position: absolute;
+  top: 42px;
+  left: 16%;
+  right: 16%;
+  height: 2px;
+  background: linear-gradient(90deg, #2f5bea, #ffc93c);
+  transform-origin: left;
+  transform: scaleX(0);
+  transition: transform 1.4s cubic-bezier(0.65, 0, 0.35, 1) 0.3s;
+}
+.steps-line.is-visible::before {
+  transform: scaleX(1);
+}
+@media (max-width: 767px) {
+  .steps-line::before {
+    display: none;
+  }
+}
+.step-num {
+  @apply relative z-10;
+}
+.is-visible .step-num {
+  animation: step-pop 0.5s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+  animation-delay: calc(var(--reveal-delay, 0ms) + 200ms);
+}
+@keyframes step-pop {
+  from {
+    transform: scale(0.4);
+  }
+}
+
+/* FAQ answers slide open. */
+details[open] > :not(summary) {
+  animation: faq-open 0.35s ease-out;
+}
+@keyframes faq-open {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+/* The animated chat demo. */
+.demo-line {
+  max-width: 82%;
+  padding: 9px 13px;
+  border-radius: 16px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.demo-visitor {
+  align-self: flex-end;
+  background: #2f5bea;
+  color: #fff;
+  border-bottom-right-radius: 5px;
+}
+.demo-agent {
+  align-self: flex-start;
+  background: #fff;
+  border: 1px solid #e3e7ef;
+  border-bottom-left-radius: 5px;
+}
+.demo-system {
+  align-self: center;
+  background: #f0f2f7;
+  color: #5b6475;
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+.demo-in {
+  animation: demo-in 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+@keyframes demo-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.92);
+  }
+}
+.demo-typing {
+  display: flex;
+  gap: 4px;
+  padding: 13px 14px;
+}
+.demo-typing i {
+  width: 7px;
+  height: 7px;
+  border-radius: 99px;
+  background: currentColor;
+  opacity: 0.45;
+  animation: dot 1s ease-in-out infinite;
+}
+.demo-typing i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.demo-typing i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes dot {
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .js [data-reveal]:not(.is-visible) {
+    opacity: 1;
+    transform: none;
+  }
+  .float-slow,
+  .pulse-dot,
+  .card-lift:hover .card-icon,
+  .is-visible .step-num,
+  details[open] > :not(summary) {
+    animation: none;
+  }
+  .steps-line::before {
+    transform: scaleX(1);
+    transition: none;
+  }
+  .card-lift,
+  .shot-hover {
+    transition: none;
+  }
+  .card-lift:hover,
+  .shot-hover:hover {
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------- comparison tables */
+.cmp-scroll {
+  @apply overflow-x-auto rounded-2xl border border-line bg-surface;
+}
+.cmp-table {
+  @apply w-full border-collapse text-left text-[14px];
+}
+.cmp-table th,
+.cmp-table td {
+  @apply border-b border-line px-4 py-3 align-top;
+}
+.cmp-table tbody tr:last-child > * {
+  @apply border-b-0;
+}
+.cmp-table thead th {
+  @apply bg-canvas text-[13px] font-bold whitespace-nowrap text-ink;
+}
+.cmp-table tbody th {
+  @apply font-semibold text-ink;
+}
+.cmp-table td {
+  @apply text-ink-2;
+}
+.cmp-table tbody tr {
+  @apply transition-colors hover:bg-canvas/70;
+}
+.cmp-features {
+  min-width: 960px;
+}
+.cmp-features th:first-child {
+  @apply sticky left-0 z-10 w-[240px] bg-surface;
+}
+.cmp-features thead th:first-child {
+  @apply bg-canvas;
+}
+.cmp-features td {
+  @apply text-center;
+}
+.cmp-features thead th:not(:first-child) {
+  @apply text-center;
+}
+.cmp-prices {
+  min-width: 760px;
+}
+.cmp-ours {
+  @apply bg-primary-subtle/60;
+}
+.cmp-features thead th.cmp-ours {
+  @apply bg-primary text-white;
+}
+.cmp-ours-row,
+.cmp-ours-row th {
+  @apply bg-primary-subtle/60;
+}
+.cmp-yes {
+  @apply inline-grid size-6 place-items-center rounded-full bg-success/15 text-[13px] font-bold text-success;
+}
+.cmp-no {
+  @apply text-[16px] text-ink-2/60;
+}
+.cmp-plan {
+  @apply text-[12px] font-medium text-ink;
+}
+.cmp-unknown {
+  @apply text-[12px] text-ink-2/80 italic;
+}

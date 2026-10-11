@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+<!-- include:head -->
+    <title>Contact — Replyfinch</title>
+    <meta name="description" content="Get in touch with the Replyfinch team: chat with us, send a message, or browse the help center." />
+  </head>
+  <body class="bg-canvas">
+<!-- include:header -->
+    <main id="main">
+      <section class="relative overflow-hidden bg-navy pt-12 pb-12 text-center text-white md:pt-16 md:pb-14">
+        <div class="float-slow pointer-events-none absolute -top-60 left-1/2 size-[800px] -translate-x-1/2 rounded-full bg-primary/25 blur-3xl" aria-hidden="true"></div>
+        <div class="relative mx-auto max-w-3xl px-5">
+          <p class="hero-fade text-[13px] font-bold tracking-wider text-gold uppercase" style="--d:0ms">Contact</p>
+          <h1 class="hero-fade mt-3 text-balance text-[38px] leading-tight font-extrabold tracking-tight md:text-[52px]" style="--d:120ms">We’d love to hear from you</h1>
+          <p class="hero-fade mx-auto mt-5 max-w-2xl text-[17px] text-on-navy" style="--d:260ms">Questions about Replyfinch, a feature you’d like, or a problem? Send us a message, or chat with us right now.</p>
+        </div>
+      </section>
+      <section class="py-12 md:py-16">
+        <div class="mx-auto grid max-w-6xl items-start gap-8 px-5 lg:grid-cols-[1fr_1.3fr]">
+          <div class="flex flex-col gap-4" data-stagger="100">
+            <div class="card-lift rounded-2xl border border-line bg-surface p-6">
+              <div class="card-icon mb-3 grid size-11 place-items-center rounded-xl bg-primary-subtle text-[22px]">💬</div>
+              <h2 class="text-lg font-bold">Chat with us</h2>
+              <p class="mt-1.5 text-[15px] text-ink-2">The fastest way: use the chat button in the bottom corner. When we’re away, it takes a message.</p>
+            </div>
+            <a data-help-link href="#" class="card-lift block rounded-2xl border border-line bg-surface p-6">
+              <div class="card-icon mb-3 grid size-11 place-items-center rounded-xl bg-primary-subtle text-[22px]">📚</div>
+              <h2 class="text-lg font-bold">Help center</h2>
+              <p class="mt-1.5 text-[15px] text-ink-2">Answers to common questions about setting up and using Replyfinch.</p>
+            </a>
+            <a href="/early-access" class="card-lift block rounded-2xl border border-line bg-surface p-6">
+              <div class="card-icon mb-3 grid size-11 place-items-center rounded-xl bg-primary-subtle text-[22px]">🚀</div>
+              <h2 class="text-lg font-bold">Want an account?</h2>
+              <p class="mt-1.5 text-[15px] text-ink-2">Request early access — it’s free.</p>
+            </a>
+          </div>
+          <div class="rounded-3xl border border-line bg-surface p-6 shadow-[0_24px_60px_-28px_rgba(20,33,61,0.35)] md:p-8" data-reveal="right">
+            <form data-site-form="contact" class="flex flex-col gap-4" novalidate>
+              <h2 class="text-xl font-bold">Send us a message</h2>
+              <div class="grid gap-4 sm:grid-cols-2">
+                <label class="flex flex-col gap-1.5 text-[14px] font-semibold">Your name <input name="name" required autocomplete="name" class="field font-normal" /></label>
+                <label class="flex flex-col gap-1.5 text-[14px] font-semibold">Email <input name="email" type="email" required autocomplete="email" class="field font-normal" /></label>
+              </div>
+              <label class="flex flex-col gap-1.5 text-[14px] font-semibold">What’s it about?
+                <select name="topic" class="field font-normal">
+                  <option value="Question">A question</option>
+                  <option value="Feature idea">A feature idea</option>
+                  <option value="Problem">Something isn’t working</option>
+                  <option value="Partnership">Partnership</option>
+                  <option value="Other">Something else</option>
+                </select>
+              </label>
+              <label class="flex flex-col gap-1.5 text-[14px] font-semibold">Message
+                <textarea name="message" required rows="6" class="field h-auto py-2.5 font-normal" placeholder="How can we help?"></textarea>
+              </label>
+              <label class="absolute -left-[9999px]" aria-hidden="true">Fax <input name="fax" tabindex="-1" autocomplete="off" /></label>
+              <p data-error role="alert" class="hidden text-[14px] font-medium text-red-600"></p>
+              <button type="submit" class="btn-primary shine">Send message</button>
+              <p class="text-[13px] text-ink-2">We usually reply within one working day. <a href="/privacy" class="text-primary underline">Privacy</a></p>
+            </form>
+            <div data-done hidden class="flex flex-col items-center gap-3 py-10 text-center" role="status">
+              <div class="grid size-14 place-items-center rounded-full bg-green-50 text-[28px]">✉️</div>
+              <h2 class="text-xl font-bold">Thanks — message sent!</h2>
+              <p class="max-w-sm text-[15px] text-ink-2">We’ll reply to <b data-done-email></b> soon.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+<!-- include:footer -->
+  </body>
+</html>

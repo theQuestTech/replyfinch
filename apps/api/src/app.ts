@@ -4,6 +4,7 @@ import { Redis } from 'ioredis';
 import { eq } from 'drizzle-orm';
 import {
   customersQuerySchema,
+  contactSchema,
   earlyAccessSchema,
   historyQuerySchema,
   loginSchema,
@@ -390,37 +391,50 @@ export async function buildApp(
     };
   });
 
-  // "Request early access" on the Replyfinch website: becomes a ticket for the Replyfinch team.
+  // The Replyfinch website's forms ("Request early access", "Contact"): each becomes a ticket for the Replyfinch team.
   const leadsAccount = env.SITE_LEADS_ACCOUNT_ID || (env.NODE_ENV === 'production' ? null : 'acc_demo');
+  async function siteTicket(reply: FastifyReply, f: { name: string; email: string; subject: string; body: string }) {
+    const acc = leadsAccount ? await visitors.accountExists(leadsAccount) : null;
+    if (!acc) return reply.code(404).send({ error: 'not_configured' });
+    const email = f.email.toLowerCase();
+    const customer = await tickets.findOrCreateCustomer(acc.id, f.name, email);
+    const row = await tickets.create(acc.id, {
+      subject: f.subject.slice(0, 200),
+      priority: 'normal',
+      assigneeId: null,
+      visitorId: customer?.id ?? null,
+      requesterName: f.name,
+      requesterEmail: email,
+      source: 'website',
+      sourceId: null,
+      createdBy: { id: null, name: f.name },
+      messages: [{ kind: 'customer', author: { id: null, name: f.name }, body: f.body }],
+    });
+    realtime.customerEmail(acc.id, { ticket: await tickets.dto(row), kind: 'created', from: f.name, preview: f.body });
+    return { ok: true };
+  }
+
   app.post('/widget/site/early-access', { preHandler: limit('early-access', 5, 600) }, async (req, reply) => {
     const parsed = earlyAccessSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'invalid_input' });
     const b = parsed.data;
     if (b.fax) return { ok: true }; // a bot filled in the hidden field: pretend it worked
-    const acc = leadsAccount ? await visitors.accountExists(leadsAccount) : null;
-    if (!acc) return reply.code(404).send({ error: 'not_configured' });
-    const customer = await tickets.findOrCreateCustomer(acc.id, b.name, b.email.toLowerCase());
     const details = [
       b.company && `Company: ${b.company}`,
       b.website && `Website: ${b.website}`,
       b.teamSize && `Team size: ${b.teamSize}`,
       b.message && `\n${b.message}`,
     ].filter(Boolean);
-    const body = details.length ? details.join('\n') : 'Asked for early access.';
-    const row = await tickets.create(acc.id, {
-      subject: `Early access: ${b.company || b.name}`,
-      priority: 'normal',
-      assigneeId: null,
-      visitorId: customer?.id ?? null,
-      requesterName: b.name,
-      requesterEmail: b.email.toLowerCase(),
-      source: 'website',
-      sourceId: null,
-      createdBy: { id: null, name: b.name },
-      messages: [{ kind: 'customer', author: { id: null, name: b.name }, body }],
-    });
-    realtime.customerEmail(acc.id, { ticket: await tickets.dto(row), kind: 'created', from: b.name, preview: body });
-    return { ok: true };
+    return siteTicket(reply, { name: b.name, email: b.email, subject: `Early access: ${b.company || b.name}`, body: details.length ? details.join('\n') : 'Asked for early access.' });
+  });
+
+  app.post('/widget/site/contact', { preHandler: limit('contact', 5, 600) }, async (req, reply) => {
+    const parsed = contactSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'invalid_input' });
+    const b = parsed.data;
+    if (b.fax) return { ok: true };
+    const first = b.message.split('\n')[0]!;
+    return siteTicket(reply, { name: b.name, email: b.email, subject: `${b.topic}: ${first.length > 70 ? `${first.slice(0, 70)}…` : first}`, body: b.message });
   });
 
   await inboundRoutes(app, {

@@ -133,7 +133,7 @@ export function useRealtime() {
           kind === 'reply'
             ? `${from} replied to ticket #${ticket.number}`
             : ticket.source === 'website'
-              ? `${from} asked for early access (ticket #${ticket.number})`
+              ? `${from} wrote via your website (ticket #${ticket.number})`
               : `New ticket #${ticket.number} by email from ${from}`,
         body: preview,
         tag: `ticket-email-${ticket.id}`,

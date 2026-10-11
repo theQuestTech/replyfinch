@@ -1,14 +1,20 @@
 import './styles.css';
+import { startMotion } from './motion';
+import { startForms } from './forms';
+import { API_URL, APP_URL, WIDGET_ACCOUNT, WIDGET_URL } from './config';
 
 // Shared by every page: menu on phones, links to the agent app, our own chat widget.
 
-const APP_URL = (import.meta.env.VITE_APP_URL ?? 'http://localhost:5173').replace(/\/$/, '');
-const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:4000').replace(/\/$/, '');
-const WIDGET_URL = (import.meta.env.VITE_WIDGET_URL ?? 'http://localhost:5174').replace(/\/$/, '');
-const WIDGET_ACCOUNT = import.meta.env.VITE_WIDGET_ACCOUNT ?? 'acc_demo';
-
 for (const a of document.querySelectorAll<HTMLAnchorElement>('[data-app-link]')) a.href = `${APP_URL}${a.dataset.appLink ?? ''}`;
 for (const el of document.querySelectorAll('[data-year]')) el.textContent = String(new Date().getFullYear());
+for (const a of document.querySelectorAll<HTMLAnchorElement>('[data-help-link]')) a.href = `${APP_URL}/help/${WIDGET_ACCOUNT}`;
+// The page you're on, in the menu.
+const here = location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
+for (const a of document.querySelectorAll<HTMLAnchorElement>('[data-nav]')) {
+  if (new URL(a.href).pathname === here) a.setAttribute('aria-current', 'page');
+}
+startMotion();
+startForms();
 
 const toggle = document.querySelector<HTMLButtonElement>('[data-menu-toggle]');
 const menu = document.querySelector<HTMLElement>('[data-menu]');
@@ -45,4 +51,3 @@ s.dataset.account = WIDGET_ACCOUNT;
 s.dataset.api = API_URL;
 document.body.appendChild(s);
 
-export { API_URL };

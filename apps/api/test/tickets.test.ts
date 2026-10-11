@@ -292,5 +292,11 @@ describe('tickets', () => {
     await call('POST', '/widget/site/early-access', undefined, { ...form, company: 'Spam Inc', fax: 'x' });
     expect((await call<TicketList>('GET', '/tickets?view=all&q=Spam', maya.token)).body.total).toBe(0);
     expect((await call<{ error: string }>('POST', '/widget/site/early-access', undefined, { name: 'x', email: 'nope' })).body.error).toBe('Please check your email address');
+
+    // The contact form, too.
+    await call('POST', '/widget/site/contact', undefined, { name: 'Ken Ito', email: 'ken@example.com', topic: 'Feature idea', message: 'Could you add WhatsApp?\nThanks!' });
+    const c = (await call<TicketList>('GET', '/tickets?view=all&q=WhatsApp', maya.token)).body.items[0]!;
+    expect(c).toMatchObject({ subject: 'Feature idea: Could you add WhatsApp?', source: 'website', requesterEmail: 'ken@example.com' });
+    expect((await call<{ error: string }>('POST', '/widget/site/contact', undefined, { name: 'Ken', email: 'ken@example.com', message: ' ' })).body.error).toBe('Please write a message');
   });
 });

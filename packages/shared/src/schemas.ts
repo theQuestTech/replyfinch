@@ -261,3 +261,12 @@ export const earlyAccessSchema = z.object({
   /** A field people can't see: bots fill it in. */
   fax: z.string().max(200).optional(),
 });
+
+/** "Send us a message" on the Replyfinch website. */
+export const contactSchema = z.object({
+  name: z.string().trim().min(1, 'Please add your name').max(120),
+  email: z.email('Please check your email address'),
+  topic: z.enum(['Question', 'Feature idea', 'Problem', 'Partnership', 'Other']).default('Question'),
+  message: z.string().trim().min(1, 'Please write a message').max(5000),
+  fax: z.string().max(200).optional(),
+});

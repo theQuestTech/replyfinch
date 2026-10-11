@@ -87,3 +87,93 @@ body {
     @apply text-primary underline underline-offset-2;
   }
 }
+
+/* Hero: the headline's words rise in one by one, then "the moment" gets a drawn underline and a soft shimmer. */
+.hero-word {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(0.45em);
+  filter: blur(6px);
+  animation: hero-word-in 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+  animation-delay: calc(var(--i) * 85ms + 120ms);
+}
+@keyframes hero-word-in {
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+.hero-highlight {
+  position: relative;
+  display: inline-block;
+  white-space: nowrap;
+}
+.hero-highlight .hero-word {
+  background: linear-gradient(100deg, #ffc93c 0%, #ffc93c 40%, #fff1c4 50%, #ffc93c 60%, #ffc93c 100%);
+  background-size: 250% 100%;
+  background-position: 100% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation:
+    hero-word-in 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) forwards,
+    hero-shimmer 3.2s ease-in-out 1.6s infinite;
+  animation-delay: calc(var(--i) * 85ms + 120ms), 1.6s;
+}
+@keyframes hero-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  45%,
+  100% {
+    background-position: 0% 0;
+  }
+}
+.hero-highlight::after {
+  content: '';
+  position: absolute;
+  left: 0.04em;
+  right: 0.04em;
+  bottom: -0.04em;
+  height: 0.12em;
+  border-radius: 999px;
+  background: #ffc93c;
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: hero-underline 0.7s cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  animation-delay: 1s;
+}
+@keyframes hero-underline {
+  to {
+    transform: scaleX(1);
+  }
+}
+.hero-fade {
+  opacity: 0;
+  animation: hero-fade-in 0.7s ease-out forwards;
+  animation-delay: var(--d, 0ms);
+}
+.hero-rise {
+  transform: translateY(24px);
+}
+@keyframes hero-fade-in {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-word,
+  .hero-fade,
+  .hero-highlight .hero-word,
+  .hero-highlight::after {
+    animation: none;
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+  .hero-highlight .hero-word {
+    background-position: 0 0;
+  }
+}

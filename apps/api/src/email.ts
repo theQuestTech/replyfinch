@@ -145,3 +145,40 @@ export function testEmail(accountName: string, color: string): Omit<OutgoingEmai
     html: layout(accountName, color, `<p style="margin:0">This is a test from Replyfinch. If you can read this, email is set up correctly. 🎉</p>`),
   };
 }
+
+/** An agent's reply on a ticket. The [#number] in the subject keeps the customer's email thread together. */
+export function ticketReplyEmail(p: {
+  accountName: string;
+  color: string;
+  number: number;
+  subject: string;
+  customerName: string | null;
+  agentName: string;
+  body: string;
+  /** The customer's latest message, quoted underneath. */
+  quoted?: { body: string; createdAt: number } | null;
+}): Omit<OutgoingEmail, 'to'> {
+  const first = p.customerName?.trim().split(' ')[0];
+  const subject = `[#${p.number}] ${p.subject}`;
+  const quote = p.quoted
+    ? `\n\nOn ${when(p.quoted.createdAt)} you wrote:\n${p.quoted.body
+        .split('\n')
+        .map((l) => `> ${l}`)
+        .join('\n')}`
+    : '';
+  const text = `${first ? `Hi ${first},\n\n` : ''}${p.body}\n\n— ${p.agentName}, ${p.accountName}\n\nYour request number is #${p.number}.${quote}`;
+  const html = layout(
+    p.accountName,
+    p.color,
+    `${first ? `<p style="margin:0 0 4px;color:#5b6475;font-size:13px">Hi ${esc(first)},</p>` : ''}
+<div style="margin:12px 0">${paragraphs(p.body)}</div>
+<p style="margin:16px 0 0">— ${esc(p.agentName)}, ${esc(p.accountName)}</p>
+<p style="margin:16px 0 0;color:#5b6475;font-size:12px">Your request number is #${p.number}.</p>${
+      p.quoted
+        ? `\n<div style="margin-top:24px;padding:12px 14px;border-left:3px solid #e3e7ef;color:#5b6475;font-size:13px">
+On ${esc(when(p.quoted.createdAt))} you wrote:<br>${paragraphs(p.quoted.body)}</div>`
+        : ''
+    }`,
+  );
+  return { subject, text, html };
+}

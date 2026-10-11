@@ -1,7 +1,8 @@
 import type { Message } from '@replyfinch/shared';
-import { offlineReplyEmail, testEmail, transcriptEmail, type Mailer } from '../email';
+import { offlineReplyEmail, testEmail, ticketReplyEmail, transcriptEmail, type Mailer } from '../email';
 import type { ConversationService } from './conversations';
 import type { OfflineService } from './offline';
+import type { TicketService } from './tickets';
 import type { WidgetSettingsService } from './widget-settings';
 
 type ConvRow = NonNullable<Awaited<ReturnType<ConversationService['get']>>>;
@@ -41,6 +42,22 @@ export function createMailActions(d: {
       const reply = await d.offline.addReply(acc, id, author, m.email, body);
       const updated = await d.offline.setStatus(acc, id, 'handled', author.id);
       return { reply, message: updated! };
+    },
+
+    /** Email an agent's reply to the ticket's customer (the caller saves it to the thread). */
+    async replyToTicket(acc: string, t: NonNullable<Awaited<ReturnType<TicketService['get']>>>, agentName: string, body: string, quoted: { body: string; createdAt: number } | null) {
+      if (!t.requesterEmail) throw new Error('ticket has no requester email');
+      const email = ticketReplyEmail({
+        ...(await brand(acc)),
+        number: t.number,
+        subject: t.subject,
+        customerName: t.requesterName,
+        agentName,
+        body,
+        quoted,
+      });
+      await d.mailer.send({ ...email, to: t.requesterEmail });
+      return t.requesterEmail;
     },
 
     async sendTest(acc: string, to: string) {

@@ -270,6 +270,7 @@ export interface CustomerProfile {
   };
   conversations: HistoryEntry[];
   offlineMessages: OfflineMessage[];
+  tickets: Ticket[];
   /** Most recent pages first. */
   pages: { url: string; title: string; at: number }[];
 }
@@ -317,3 +318,45 @@ export interface AiSuggestion {
   /** Why there is no text, or why free mode was used instead of AI. */
   note?: 'no_match' | 'budget_reached' | 'ai_unavailable' | 'ai_declined';
 }
+
+export type TicketStatus = 'open' | 'pending' | 'solved';
+export type TicketPriority = 'low' | 'normal' | 'high' | 'urgent';
+export type TicketView = 'unsolved' | 'mine' | 'unassigned' | 'open' | 'pending' | 'solved' | 'all';
+
+export interface Ticket {
+  id: string;
+  number: number;
+  subject: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  assigneeId: string | null;
+  assigneeName: string | null;
+  visitorId: string | null;
+  requesterName: string | null;
+  requesterEmail: string | null;
+  source: 'manual' | 'chat' | 'offline';
+  sourceId: string | null;
+  createdByName: string | null;
+  createdAt: number;
+  updatedAt: number;
+  solvedAt: number | null;
+}
+
+export interface TicketMessage {
+  id: string;
+  /** customer: their words · reply: emailed to them · note: agents only · event: a change (status, assignee…) */
+  kind: 'customer' | 'reply' | 'note' | 'event';
+  authorId: string | null;
+  authorName: string;
+  body: string;
+  emailedTo: string | null;
+  createdAt: number;
+}
+
+export interface TicketList {
+  items: Ticket[];
+  total: number;
+}
+
+/** Ticket counts for each view in the sidebar. */
+export type TicketCounts = Record<TicketView, number>;

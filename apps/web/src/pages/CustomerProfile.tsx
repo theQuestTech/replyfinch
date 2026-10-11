@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, ChevronDown, ChevronRight, Globe, Inbox, Mail, MessageCircle, Monitor, Smartphone, Tablet } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronRight, Globe, Inbox, Mail, MessageCircle, Monitor, Smartphone, Tablet, Ticket as TicketIcon, TicketPlus } from 'lucide-react';
 import type { Conversation, CustomerProfile as Profile, Message } from '@replyfinch/shared';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -13,6 +13,8 @@ import { Avatar, Button, Card, CountryCode, Pill, RatingPill, SectionLabel } fro
 import { ProfileField, TagEditor } from '../components/chat/VisitorInfo';
 import { Transcript } from '../components/chat/Transcript';
 import { customerName } from './Customers';
+import { NewTicketModal } from '../components/tickets/NewTicketModal';
+import { STATUS } from '../lib/tickets';
 
 type Patch = Partial<Pick<Profile['customer'], 'name' | 'email' | 'phone' | 'notes' | 'tags'>>;
 
@@ -23,6 +25,7 @@ export function CustomerProfile() {
   const openChat = useDesk((s) => s.openChat);
 
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [ticketing, setTicketing] = useState(false);
   const save = async (p: Patch) => {
     // Show the change right away, then sync with the server.
     queryClient.setQueryData<Profile>(['customer', id], (old) => (old ? { ...old, customer: { ...old.customer, ...p } } : old));
@@ -42,6 +45,7 @@ export function CustomerProfile() {
 
   return (
     <div className="flex min-h-full flex-col gap-5 px-8 py-7" data-testid="customer-profile">
+      {ticketing && <NewTicketModal visitorId={id} defaults={{ name: c.name, email: c.email }} onClose={() => setTicketing(false)} />}
       <Link to="/customers" className="flex w-fit items-center gap-1 text-[13px] font-medium text-ink-2 hover:text-ink">
         <ArrowLeft className="size-4" /> Customers
       </Link>
@@ -67,6 +71,9 @@ export function CustomerProfile() {
             <Mail className="size-4" /> Email
           </a>
         )}
+        <Button onClick={() => setTicketing(true)}>
+          <TicketPlus className="size-4" /> New ticket
+        </Button>
         {online && (
           <Button variant="primary" onClick={() => openChat(id, 'side')}>
             <MessageCircle className="size-4" /> Chat now
@@ -120,6 +127,21 @@ export function CustomerProfile() {
               <ConversationRow key={conv.id} conv={conv} />
             ))}
           </Card>
+
+          {data.tickets.length > 0 && (
+            <Card>
+              <SectionHeader title="Tickets" count={data.tickets.length} />
+              {data.tickets.map((t) => (
+                <Link key={t.id} to={`/tickets/${t.id}`} className="flex items-center gap-3 border-t border-line px-5 py-3 text-[13px] hover:bg-muted">
+                  <TicketIcon className="size-4 shrink-0 text-ink-2" />
+                  <span className="shrink-0 text-ink-2 tabular-nums">#{t.number}</span>
+                  <span className="min-w-0 flex-1 truncate">{t.subject}</span>
+                  <Pill tone={STATUS[t.status].tone}>{STATUS[t.status].label}</Pill>
+                  <span className="shrink-0 text-xs text-ink-2">{timeAgo(t.updatedAt)}</span>
+                </Link>
+              ))}
+            </Card>
+          )}
 
           {data.offlineMessages.length > 0 && (
             <Card>

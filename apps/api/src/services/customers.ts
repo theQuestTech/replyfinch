@@ -4,6 +4,7 @@ import type { Db } from '../db/client';
 import { conversations, offlineMessages, pageViews, visitors } from '../db/schema';
 import type { HistoryService } from './history';
 import type { OfflineService } from './offline';
+import type { TicketService } from './tickets';
 
 export interface CustomerQuery {
   q?: string;
@@ -18,7 +19,7 @@ const likePattern = (q: string) => `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 // Fully qualified: inside the count subqueries a bare "id" would mean the subquery's own table.
 const VID = sql.raw('"visitors"."id"');
 
-export function createCustomerService(db: Db, history: HistoryService, offline: OfflineService) {
+export function createCustomerService(db: Db, history: HistoryService, offline: OfflineService, tickets: TicketService) {
   const chats = sql<number>`(select count(*) from ${conversations} c where c.visitor_id = ${VID})`;
   const fields = {
     id: visitors.id,
@@ -103,9 +104,10 @@ export function createCustomerService(db: Db, history: HistoryService, offline: 
         .from(visitors)
         .where(and(eq(visitors.id, id), eq(visitors.accountId, accountId)));
       if (!row) return null;
-      const [convs, offlineMsgs, pages] = await Promise.all([
+      const [convs, offlineMsgs, ticketList, pages] = await Promise.all([
         history.list(accountId, { visitorId: id, status: 'all', limit: 100 }),
         offline.listForVisitor(accountId, id),
+        tickets.forVisitor(accountId, id),
         db
           .select({ url: pageViews.url, title: pageViews.title, at: pageViews.createdAt })
           .from(pageViews)
@@ -117,6 +119,7 @@ export function createCustomerService(db: Db, history: HistoryService, offline: 
         customer: { ...toSummary(row), notes: row.notes, timezone: row.timezone, browser: row.browser, os: row.os, device: row.device },
         conversations: convs.items,
         offlineMessages: offlineMsgs,
+        tickets: ticketList,
         pages: pages.map((p) => ({ url: p.url, title: p.title, at: p.at.getTime() })),
       };
     },

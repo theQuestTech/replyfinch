@@ -1,7 +1,7 @@
 // Socket.IO event contracts. Two namespaces:
 //   /visitor — the website widget
 //   /agent   — the agent app
-import type { AgentStatus, AuthorType, Conversation, LiveVisitor, Message, OfflineMessage, TeamMember } from './types';
+import type { AgentStatus, AuthorType, Conversation, LiveVisitor, Message, OfflineMessage, TeamMember, Ticket } from './types';
 
 export interface TypingPayload {
   conversationId: string;
@@ -91,4 +91,8 @@ export interface AgentServerEvents {
   'offline:new': (m: OfflineMessage) => void;
   /** An offline message was marked handled or reopened. */
   'offline:update': (m: OfflineMessage) => void;
+  /** A ticket was created or changed (lists and counts refresh). */
+  'ticket:update': (t: Ticket) => void;
+  /** A teammate assigned a ticket to you. */
+  'ticket:assigned': (p: { ticket: Ticket; byName: string }) => void;
 }

@@ -12,4 +12,6 @@ export const newId = {
   shortcut: () => `sc_${ulid()}`,
   offlineMessage: () => `om_${ulid()}`,
   offlineReply: () => `or_${ulid()}`,
+  ticket: () => `tk_${ulid()}`,
+  ticketMessage: () => `tm_${ulid()}`,
 };

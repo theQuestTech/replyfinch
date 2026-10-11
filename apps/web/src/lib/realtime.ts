@@ -20,6 +20,13 @@ let socket: AgentSocket | null = null;
 export const getSocket = () => socket;
 
 /** Connects the agent socket while logged in and mirrors server events into the store. */
+/** Client-side navigation from outside React (react-router listens for popstate). */
+export function goTo(path: string) {
+  if (useDesk.getState().active) useDesk.getState().minimize(); // show the page, not a chat over it
+  window.history.pushState({}, '', path);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
+
 export function useRealtime() {
   const token = useAuth((s) => s.token);
 
@@ -107,13 +114,25 @@ export function useRealtime() {
         title: `Offline message from ${m.name}`,
         body: m.message,
         tag: `offline-${m.id}`,
-        onClick: () => {
-          // Client-side navigation (react-router listens for popstate).
-          window.history.pushState({}, '', `/inbox?m=${m.id}`);
-          window.dispatchEvent(new PopStateEvent('popstate'));
-        },
+        onClick: () => goTo(`/inbox?m=${m.id}`),
       });
     });
+    s.on('ticket:update', (t) => {
+      void queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      void queryClient.invalidateQueries({ queryKey: ['ticket', t.id] });
+      if (t.visitorId) void queryClient.invalidateQueries({ queryKey: ['customer', t.visitorId] });
+    });
+    s.on('ticket:assigned', ({ ticket, byName }) =>
+      alertAgent({
+        kind: 'ticket',
+        agentStatus: myStatus(),
+        viewingThisChat: false,
+        title: `${byName} assigned ticket #${ticket.number} to you`,
+        body: ticket.subject,
+        tag: `ticket-${ticket.id}`,
+        onClick: () => goTo(`/tickets/${ticket.id}`),
+      }),
+    );
     s.on('typing:preview', ({ conversationId, text }) => useDesk.getState().setPreview(conversationId, text));
     s.on('typing', (t) => {
       if (t.authorType !== 'visitor') return;

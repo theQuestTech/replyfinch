@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRightLeft,
+  TicketPlus,
   ChevronDown,
   Eye,
   Lock,
@@ -31,6 +32,7 @@ import { Avatar, Button, CountryCode, IconButton, Kbd, Pill, RatingPill } from '
 import { Transcript, type PendingMessage } from './Transcript';
 import { VisitorInfo } from './VisitorInfo';
 import { TransferModal } from './TransferModal';
+import { NewTicketModal } from '../tickets/NewTicketModal';
 
 type Tab = 'current' | 'past' | 'activity';
 
@@ -51,6 +53,7 @@ export function ChatWindow({ visitorId, mode }: { visitorId: string; mode: ChatM
   const [tab, setTab] = useState<Tab>('current');
   const connectedAt = useDesk((s) => s.connectedAt);
   const [transferring, setTransferring] = useState(false);
+  const [ticketing, setTicketing] = useState(false);
 
   // Follow the visitor's current chat; keep showing an ended one until a new one starts.
   useEffect(() => {
@@ -105,6 +108,13 @@ export function ChatWindow({ visitorId, mode }: { visitorId: string; mode: ChatM
     >
       {mode === 'main' && <OpenChatsStrip activeId={visitorId} />}
       {transferring && conversation && <TransferModal conversation={conversation} onClose={() => setTransferring(false)} />}
+      {ticketing && conversation && (
+        <NewTicketModal
+          from={{ type: 'chat', id: conversation.id }}
+          defaults={{ subject: (conversation.preview ?? '').slice(0, 120), name: visitor.name, email: visitor.email }}
+          onClose={() => setTicketing(false)}
+        />
+      )}
       <div className={clsx('flex min-h-0 flex-1 flex-col bg-surface', mode === 'main' && 'overflow-hidden rounded-xl border border-line')}>
         {/* Header */}
         <div className="flex items-center gap-3 border-b border-line py-3 pr-4 pl-5">
@@ -119,6 +129,11 @@ export function ChatWindow({ visitorId, mode }: { visitorId: string; mode: ChatM
             <HeaderStatus conversation={conversation} joined={joined} meId={me.id} left={!!visitor.left} />
           </div>
           <div className="flex-1" />
+          {conversation && (
+            <Button onClick={() => setTicketing(true)} title="Create a ticket to follow up on this chat">
+              <TicketPlus className="size-3.5" /> Ticket
+            </Button>
+          )}
           {open && (
             <Button onClick={() => setTransferring(true)}>
               <ArrowRightLeft className="size-3.5" /> Transfer

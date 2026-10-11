@@ -30,12 +30,13 @@ import { Avatar, Kbd, StatusDot } from './ui';
 import { ChatDock } from './chat/ChatDock';
 import { ChatWindow } from './chat/ChatWindow';
 import { useOfflineCount } from '../pages/Inbox';
+import { useTicketCounts } from '../lib/tickets';
 
 const NAV = [
   { to: '/', label: 'Home', icon: House, end: true, badge: 'waiting' as const },
   { to: '/visitors', label: 'Visitors', icon: Eye },
   { to: '/inbox', label: 'Inbox', icon: Inbox, badge: 'offline' as const },
-  { to: '/tickets', label: 'Tickets', icon: Ticket, soon: true },
+  { to: '/tickets', label: 'Tickets', icon: Ticket, badge: 'tickets' as const },
   { to: '/customers', label: 'Customers', icon: Users },
   { to: '/history', label: 'History', icon: History },
   { to: '/reports', label: 'Reports', icon: ChartColumn },
@@ -118,7 +119,9 @@ export function Shell() {
   const active = useDesk((s) => s.active);
   const waiting = useDesk((s) => Object.values(s.conversations).filter((c) => c.status === 'waiting').length);
   const { data: offlineNew = 0 } = useOfflineCount();
-  const badges = { waiting, offline: offlineNew };
+  // Tickets waiting on me.
+  const { data: ticketCounts } = useTicketCounts();
+  const badges = { waiting, offline: offlineNew, tickets: ticketCounts?.mine ?? 0 };
   const { expanded, toggle } = useSidebar();
   useTabTitle();
   useEffect(() => unlockAudio(), []);

@@ -190,3 +190,50 @@ export const aiUsage = pgTable(
   },
   (t) => [primaryKey({ columns: [t.accountId, t.month] })],
 );
+
+/** Helpdesk tickets: requests that need follow-up beyond a live chat. */
+export const tickets = pgTable(
+  'tickets',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull().references(() => accounts.id),
+    /** Per-account number agents and customers see (#1, #2, …). */
+    number: integer('number').notNull(),
+    subject: text('subject').notNull(),
+    status: text('status', { enum: ['open', 'pending', 'solved'] }).notNull().default('open'),
+    priority: text('priority', { enum: ['low', 'normal', 'high', 'urgent'] }).notNull().default('normal'),
+    assigneeId: text('assignee_id').references(() => users.id),
+    visitorId: text('visitor_id').references(() => visitors.id),
+    requesterName: text('requester_name'),
+    requesterEmail: text('requester_email'),
+    /** Where it came from: typed in by an agent, a chat, or an offline message. */
+    source: text('source', { enum: ['manual', 'chat', 'offline'] }).notNull().default('manual'),
+    sourceId: text('source_id'),
+    createdBy: text('created_by').references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    solvedAt: timestamp('solved_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('tickets_account_number_idx').on(t.accountId, t.number),
+    index('tickets_account_status_idx').on(t.accountId, t.status, t.updatedAt),
+    index('tickets_visitor_idx').on(t.visitorId),
+  ],
+);
+
+/** A ticket's thread: the customer's words, emailed replies, agents-only notes and changes. */
+export const ticketMessages = pgTable(
+  'ticket_messages',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull().references(() => accounts.id),
+    ticketId: text('ticket_id').notNull().references(() => tickets.id),
+    kind: text('kind', { enum: ['customer', 'reply', 'note', 'event'] }).notNull(),
+    authorId: text('author_id').references(() => users.id),
+    authorName: text('author_name').notNull(),
+    body: text('body').notNull(),
+    emailedTo: text('emailed_to'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('ticket_messages_ticket_idx').on(t.ticketId, t.createdAt)],
+);

@@ -35,6 +35,8 @@ import { createMailActions } from './services/mail-actions';
 import { createAiService, type AiClient } from './services/ai';
 import { createLogMailer, createMailer, EmailError, type Mailer } from './email';
 import { settingsRoutes } from './routes/settings';
+import { ticketRoutes } from './routes/tickets';
+import { createTicketService } from './services/tickets';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -60,7 +62,8 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?:
   const offline = createOfflineService(db);
   const widgetSettings = createWidgetSettingsService(db);
   const reports = createReportService(db);
-  const customers = createCustomerService(db, history, offline);
+  const tickets = createTicketService(db);
+  const customers = createCustomerService(db, history, offline, tickets);
   const logMailer = env.EMAIL_TRANSPORT === 'log' && env.NODE_ENV !== 'production' ? createLogMailer(env.EMAIL_FROM ?? 'Replyfinch <dev@replyfinch.dev>') : null;
   const mailer = opts.mailer ?? logMailer ?? createMailer({ apiKey: env.RESEND_API_KEY, from: env.EMAIL_FROM, replyTo: env.EMAIL_REPLY_TO });
   const mail = createMailActions({ mailer, conversations, offline, widgetSettings });
@@ -169,6 +172,7 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?:
   app.register(async (r) => {
     r.addHook('preHandler', requireAgent);
     await settingsRoutes(r, { db, auth, realtime, shortcuts, widgetSettings, ai });
+    await ticketRoutes(r, { db, tickets, conversations, offline, visitors, mail, realtime, replyLimit: limit('ticket-message', 60, 60, (req) => req.agent.sub) });
 
     r.get('/me', async (req) => {
       const [u] = await db.select().from(users).where(eq(users.id, req.agent.sub));

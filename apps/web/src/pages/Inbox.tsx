@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Check, Copy, Globe, Inbox as InboxIcon, Mail, MessageCircle, RotateCcw, Send } from 'lucide-react';
+import { Check, Copy, Globe, Inbox as InboxIcon, Mail, MessageCircle, RotateCcw, Send, TicketPlus } from 'lucide-react';
 import type { OfflineMessage, OfflineReply } from '@replyfinch/shared';
 import { api, ApiError } from '../lib/api';
 import { useEmailStatus } from '../lib/email';
@@ -10,6 +10,7 @@ import { queryClient } from '../lib/query';
 import { useDesk } from '../lib/store';
 import { dateTime, initials, shortUrl, timeAgo } from '../lib/format';
 import { Avatar, Button, Card, Pill } from '../components/ui';
+import { NewTicketModal } from '../components/tickets/NewTicketModal';
 
 type Filter = 'new' | 'handled' | 'all';
 const FILTERS: { id: Filter; label: string }[] = [
@@ -151,6 +152,7 @@ function MessageDetail({ m }: { m: OfflineMessage }) {
     queryFn: () => api<OfflineReply[]>(`/offline-messages/${m.id}/replies`),
   });
   const [draft, setDraft] = useState('');
+  const [ticketing, setTicketing] = useState(false);
   const send = useMutation({
     mutationFn: () => api(`/offline-messages/${m.id}/reply`, { method: 'POST', body: JSON.stringify({ body: draft.trim() }) }),
     onSuccess: () => {
@@ -166,6 +168,13 @@ function MessageDetail({ m }: { m: OfflineMessage }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="offline-detail">
+      {ticketing && (
+        <NewTicketModal
+          from={{ type: 'offline', id: m.id }}
+          defaults={{ subject: m.message.split('\n')[0]!.slice(0, 120), name: m.name, email: m.email }}
+          onClose={() => setTicketing(false)}
+        />
+      )}
       <div className="flex items-start gap-3.5 border-b border-line px-6 py-5">
         <Avatar text={initials(m.name)} size={44} />
         <div className="min-w-0 flex-1">
@@ -273,6 +282,9 @@ function MessageDetail({ m }: { m: OfflineMessage }) {
             <MessageCircle className="size-4" /> Start chat
           </Button>
         )}
+        <Button onClick={() => setTicketing(true)} title="Track it as a ticket (marks this message handled)">
+          <TicketPlus className="size-4" /> Create ticket
+        </Button>
         <div className="flex-1" />
         {m.status === 'new' ? (
           <Button variant="success" disabled={setStatus.isPending} onClick={() => setStatus.mutate('handled')}>

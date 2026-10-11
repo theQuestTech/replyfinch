@@ -15,6 +15,8 @@ import { Inbox } from './pages/Inbox';
 import { Reports } from './pages/Reports';
 import { Customers } from './pages/Customers';
 import { CustomerProfile } from './pages/CustomerProfile';
+import { Tickets } from './pages/Tickets';
+import { TicketDetail } from './pages/TicketDetail';
 import { SettingsLayout } from './pages/settings/SettingsLayout';
 import { Profile } from './pages/settings/Profile';
 import { Team } from './pages/settings/Team';
@@ -62,6 +64,8 @@ createRoot(document.getElementById('root')!).render(
             <Route path="reports" element={<Reports />} />
             <Route path="customers" element={<Customers />} />
             <Route path="customers/:id" element={<CustomerProfile />} />
+            <Route path="tickets" element={<Tickets />} />
+            <Route path="tickets/:id" element={<TicketDetail />} />
             <Route path="settings" element={<SettingsLayout />}>
               <Route index element={<Navigate to="profile" replace />} />
               <Route path="profile" element={<Profile />} />

@@ -23,9 +23,9 @@ test('AI suggest (free mode) drafts the best saved reply; the agent edits and se
   await agent.keyboard.press('Escape');
   await agent.goto(`${AGENT_URL}/settings/ai`);
   await expect(agent.getByTestId('ai-status')).toContainText('Free mode');
-  await agent.getByLabel('Business information for the AI').fill('We ship across Europe in 3–5 days.');
+  await agent.getByLabel('Business information for the AI').fill(`We ship across Europe in 3–5 days. (${name})`);
   await agent.getByRole('button', { name: 'Save' }).click();
   await expect(agent.getByText('Saved', { exact: true })).toBeVisible();
   await agent.reload();
-  await expect(agent.getByLabel('Business information for the AI')).toHaveValue('We ship across Europe in 3–5 days.');
+  await expect(agent.getByLabel('Business information for the AI')).toHaveValue(`We ship across Europe in 3–5 days. (${name})`);
 });

@@ -32,7 +32,7 @@ export const useNotifyPrefs = create<NotifyPrefs & { set: (p: Partial<NotifyPref
 }));
 
 // ---------------------------------------------------------------- when to alert
-export type AlertKind = 'new-chat' | 'message' | 'offline-message';
+export type AlertKind = 'new-chat' | 'message' | 'offline-message' | 'ticket';
 
 /** Pure decision: should this event make a sound / show a desktop notification? */
 export function decideAlert(input: {

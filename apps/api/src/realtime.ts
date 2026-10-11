@@ -704,6 +704,13 @@ export function createRealtime(d: Deps) {
     announce: (acc: string, m: Parameters<AgentServerEvents['message:new']>[0]) => toAgents(acc).emit('message:new', m),
     /** An agent marked an offline message handled (or reopened it). */
     offlineChanged: (acc: string, m: Parameters<AgentServerEvents['offline:update']>[0]) => toAgents(acc).emit('offline:update', m),
+    /** A ticket changed; tell its new assignee if someone else assigned it to them. */
+    ticketChanged(acc: string, t: Parameters<AgentServerEvents['ticket:update']>[0], assignedBy?: { id: string; name: string }) {
+      toAgents(acc).emit('ticket:update', t);
+      if (assignedBy && t.assigneeId && t.assigneeId !== assignedBy.id) {
+        agentsNs.to(`agent:${t.assigneeId}`).emit('ticket:assigned', { ticket: t, byName: assignedBy.name });
+      }
+    },
     /** Push profile edits made over REST to everyone watching. */
     async visitorChanged(acc: string, vid: string, patch: Partial<VisitorRecord>) {
       const r = await d.presence.updateVisitor(acc, vid, (rec) => Object.assign(rec, patch));

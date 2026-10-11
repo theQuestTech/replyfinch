@@ -178,3 +178,43 @@ export const historyQuerySchema = z.object({
   cursor: z.string().max(100).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(30),
 });
+
+export const TICKET_STATUSES = ['open', 'pending', 'solved'] as const;
+export const TICKET_PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const;
+
+export const ticketCreateSchema = z.object({
+  subject: z.string().trim().min(1, 'Add a subject').max(200),
+  /** The request in the customer's words, or what the agent knows so far. */
+  description: z.string().trim().max(MAX_MESSAGE_LENGTH).default(''),
+  priority: z.enum(TICKET_PRIORITIES).default('normal'),
+  assigneeId: z.string().max(64).nullish(),
+  /** Who it's for: a known customer, or a name and email typed in. */
+  visitorId: z.string().max(64).optional(),
+  name: z.string().trim().max(120).optional(),
+  email: z.union([z.email(), z.literal('')]).optional(),
+  /** Make it from a chat or an offline message (the customer comes from there). */
+  from: z.object({ type: z.enum(['chat', 'offline']), id: z.string().min(1).max(64) }).optional(),
+});
+
+export const ticketUpdateSchema = z.object({
+  subject: z.string().trim().min(1).max(200).optional(),
+  status: z.enum(TICKET_STATUSES).optional(),
+  priority: z.enum(TICKET_PRIORITIES).optional(),
+  assigneeId: z.string().max(64).nullable().optional(),
+});
+
+export const ticketMessageSchema = z.object({
+  body: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH),
+  /** true: an agents-only note; false: a reply emailed to the customer. */
+  internal: z.boolean().default(false),
+  /** Change the status in the same step ("Send and mark pending"). */
+  status: z.enum(TICKET_STATUSES).optional(),
+});
+
+export const ticketsQuerySchema = z.object({
+  view: z.enum(['unsolved', 'mine', 'unassigned', 'open', 'pending', 'solved', 'all']).default('unsolved'),
+  q: z.string().trim().max(200).optional(),
+  visitorId: z.string().max(64).optional(),
+  offset: z.coerce.number().int().min(0).max(100_000).default(0),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});

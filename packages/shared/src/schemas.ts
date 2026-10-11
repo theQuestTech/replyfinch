@@ -111,6 +111,11 @@ export const transcriptEmailSchema = z.object({ to: z.email().optional() });
 
 export const transcriptRequestSchema = z.object({ conversationId: z.string().min(1), email: z.email() });
 
+export const aiSettingsSchema = z.object({
+  knowledge: z.string().max(8000, 'Keep it under 8,000 characters'),
+  monthlyCapUsd: z.number().min(1).max(500),
+});
+
 export const MIN_PASSWORD_LENGTH = 10;
 const password = z.string().min(MIN_PASSWORD_LENGTH, `Use at least ${MIN_PASSWORD_LENGTH} characters`).max(200);
 

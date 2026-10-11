@@ -15,6 +15,7 @@
     "release": "node dist/cli/migrate.js && node dist/cli/seed.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
     "@fastify/cors": "^11.3.0",
     "@replyfinch/shared": "workspace:*",
     "@socket.io/redis-adapter": "^8.3.0",

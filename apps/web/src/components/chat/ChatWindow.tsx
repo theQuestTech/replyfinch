@@ -18,7 +18,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
-import type { Conversation, Message, Shortcut } from '@replyfinch/shared';
+import type { AiSuggestion, Conversation, Message, Shortcut } from '@replyfinch/shared';
 import { Link } from 'react-router-dom';
 import { fillShortcut, inlineSuggestion, searchShortcuts, slashQuery } from '../../lib/shortcuts';
 import { useShortcuts } from '../../pages/settings/Shortcuts';
@@ -366,9 +366,32 @@ function Composer({
   const [composing, setComposing] = useState(joined);
   const [text, setText] = useState('');
   const [internal, setInternal] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNote, setAiNote] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
   const typingRef = useRef<{ on: boolean; timer?: number }>({ on: false });
   const agentName = useAuth((s) => s.agent?.name ?? '');
+
+  /** AI suggest: put a draft reply in the box (never sends it). */
+  const suggest = async () => {
+    if (!conversationId) return;
+    setAiBusy(true);
+    setAiNote(null);
+    try {
+      const s = await api<AiSuggestion>(`/conversations/${conversationId}/suggest`, { method: 'POST' });
+      if (s.text) {
+        const draft = s.text;
+        setComposing(true);
+        setText((t) => (t.trim() ? `${t.trimEnd()}\n${draft}` : draft));
+        requestAnimationFrame(() => ref.current?.focus());
+      }
+      setAiNote(suggestionNote(s));
+    } catch {
+      setAiNote('Couldn’t get a suggestion. Please try again.');
+    } finally {
+      setAiBusy(false);
+    }
+  };
 
   // ---- shortcuts: "/" picker + suggestions while typing ----
   const { data: shortcuts = [] } = useShortcuts();
@@ -451,6 +474,7 @@ function Composer({
     const body = text.trim();
     if (!body) return;
     setText('');
+    setAiNote(null);
     emitTyping(false);
     onSend(body, internal && canInternal);
   };
@@ -477,6 +501,15 @@ function Composer({
           <span className="flex items-center gap-1.5">
             <Kbd>⌘ ↑</Kbd> switch window
           </span>
+          {conversationId && (
+            <button
+              onClick={suggest}
+              disabled={aiBusy}
+              className="ml-auto flex cursor-pointer items-center gap-1 font-semibold text-primary hover:underline disabled:opacity-50"
+            >
+              <Sparkles className="size-3.5" /> {aiBusy ? 'Thinking…' : 'AI suggest'}
+            </button>
+          )}
         </div>
       </div>
     );
@@ -577,7 +610,7 @@ function Composer({
             );
           })}
           <ToolbarButton icon={Zap} label="Shortcuts" onClick={openPicker} />
-          <ToolbarButton icon={Sparkles} label="AI suggest" disabled />
+          <ToolbarButton icon={Sparkles} label={aiBusy ? 'Thinking…' : 'AI suggest'} onClick={suggest} disabled={!conversationId || aiBusy} />
           {canInternal && (
             <ToolbarButton icon={Lock} label="Internal note" active={internal} onClick={() => setInternal((v) => !v)} />
           )}
@@ -586,6 +619,11 @@ function Composer({
             <Send className="size-3.5" /> {internal ? 'Add note' : 'Send'}
           </Button>
         </div>
+        {aiNote && (
+          <div role="status" className="text-[11px] text-ink-2" data-testid="ai-note">
+            {aiNote}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -658,6 +696,20 @@ function ShortcutPicker({
       </div>
     </div>
   );
+}
+
+function suggestionNote(s: AiSuggestion): string {
+  if (!s.text) return 'No saved reply matches this message. Add one in Settings → Shortcuts.';
+  if (s.engine === 'claude') return '✨ AI draft — check it before sending.';
+  const why =
+    s.note === 'budget_reached'
+      ? ' (this month’s AI budget is used up)'
+      : s.note === 'ai_unavailable'
+        ? ' (AI is unavailable right now)'
+        : s.note === 'ai_declined'
+          ? ' (AI couldn’t help with this one)'
+          : '';
+  return `Suggested your saved reply /${s.shortcutName}${why} — check it before sending.`;
 }
 
 function ToolbarButton({

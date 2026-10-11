@@ -8,6 +8,7 @@ import {
   teamCreateSchema,
   teamUpdateSchema,
   widgetSettingsSchema,
+  aiSettingsSchema,
   type Agent,
 } from '@replyfinch/shared';
 import { checkPassword, hashPassword, tokensValidFrom, type Auth } from '../auth';
@@ -17,13 +18,14 @@ import { newId } from '../ids';
 import type { Realtime } from '../realtime';
 import type { ShortcutService } from '../services/shortcuts';
 import type { WidgetSettingsService } from '../services/widget-settings';
+import type { AiService } from '../services/ai';
 
-type Deps = { db: Db; auth: Auth; realtime: Realtime; shortcuts: ShortcutService; widgetSettings: WidgetSettingsService };
+type Deps = { db: Db; auth: Auth; realtime: Realtime; shortcuts: ShortcutService; widgetSettings: WidgetSettingsService; ai: AiService };
 
 const firstIssue = (e: { issues: { message: string }[] }) => e.issues[0]?.message ?? 'invalid_input';
 
 /** Profile, team management (admins) and shortcuts. Registered behind agent auth. */
-export async function settingsRoutes(r: FastifyInstance, { db, auth, realtime, shortcuts, widgetSettings }: Deps) {
+export async function settingsRoutes(r: FastifyInstance, { db, auth, realtime, shortcuts, widgetSettings, ai }: Deps) {
   const requireAdmin = async (req: FastifyRequest, reply: FastifyReply) => {
     const [me] = await db.select({ role: users.role }).from(users).where(eq(users.id, req.agent.sub));
     if (me?.role !== 'admin') return reply.code(403).send({ error: 'admins_only' });
@@ -48,6 +50,18 @@ export async function settingsRoutes(r: FastifyInstance, { db, auth, realtime, s
     const body = widgetSettingsSchema.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: firstIssue(body.error) });
     return widgetSettings.set(req.agent.acc, body.data);
+  });
+
+  // ---------------- AI assistant ----------------
+  r.get('/settings/ai', async (req) => {
+    const { accountName: _, ...settings } = await ai.settings(req.agent.acc);
+    return { settings, status: await ai.status(req.agent.acc) };
+  });
+
+  r.put('/settings/ai', { preHandler: requireAdmin }, async (req, reply) => {
+    const body = aiSettingsSchema.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: firstIssue(body.error) });
+    return ai.saveSettings(req.agent.acc, body.data);
   });
 
   // ---------------- my profile ----------------

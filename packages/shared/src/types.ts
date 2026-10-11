@@ -288,3 +288,32 @@ export interface EmailStatus {
   from: string | null;
   replyTo: string | null;
 }
+
+/** Settings → AI assistant (admins). */
+export interface AiSettings {
+  /** Company facts, policies and tone the AI may use when drafting replies. */
+  knowledge: string;
+  /** Hard monthly spending limit for AI mode, in US dollars. */
+  monthlyCapUsd: number;
+}
+
+export const DEFAULT_AI_SETTINGS: AiSettings = { knowledge: '', monthlyCapUsd: 10 };
+
+export interface AiStatus {
+  /** "claude" once an Anthropic API key is set on the server; otherwise free mode (best saved reply). */
+  engine: 'claude' | 'shortcuts';
+  model: string | null;
+  /** YYYY-MM (UTC) */
+  month: string;
+  suggestions: number;
+  spentUsd: number;
+}
+
+export interface AiSuggestion {
+  text: string | null;
+  engine: 'claude' | 'shortcuts';
+  /** Free mode: which saved reply was used. */
+  shortcutName?: string;
+  /** Why there is no text, or why free mode was used instead of AI. */
+  note?: 'no_match' | 'budget_reached' | 'ai_unavailable' | 'ai_declined';
+}

@@ -32,6 +32,7 @@ import { createWidgetSettingsService } from './services/widget-settings';
 import { createReportService } from './services/reports';
 import { createCustomerService } from './services/customers';
 import { createMailActions } from './services/mail-actions';
+import { createAiService, type AiClient } from './services/ai';
 import { createLogMailer, createMailer, EmailError, type Mailer } from './email';
 import { settingsRoutes } from './routes/settings';
 
@@ -41,7 +42,7 @@ declare module 'fastify' {
   }
 }
 
-export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?: Mailer; rateLimit?: boolean } = {}) {
+export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?: Mailer; rateLimit?: boolean; aiClient?: AiClient | null } = {}) {
   const app = Fastify({
     logger: env.NODE_ENV === 'development' ? { level: 'info' } : env.NODE_ENV === 'production',
     // Railway (and most hosts) put a proxy in front: use the client's real IP for rate limits.
@@ -63,6 +64,7 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?:
   const logMailer = env.EMAIL_TRANSPORT === 'log' && env.NODE_ENV !== 'production' ? createLogMailer(env.EMAIL_FROM ?? 'Replyfinch <dev@replyfinch.dev>') : null;
   const mailer = opts.mailer ?? logMailer ?? createMailer({ apiKey: env.RESEND_API_KEY, from: env.EMAIL_FROM, replyTo: env.EMAIL_REPLY_TO });
   const mail = createMailActions({ mailer, conversations, offline, widgetSettings });
+  const ai = createAiService({ db, shortcuts, apiKey: env.ANTHROPIC_API_KEY, model: env.AI_MODEL, client: opts.aiClient });
 
   // Never send internal details (SQL, stack traces) to clients; log them instead.
   app.setErrorHandler((err: Error & { statusCode?: number }, req, reply) => {
@@ -166,7 +168,7 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?:
   // ---------------- agent API ----------------
   app.register(async (r) => {
     r.addHook('preHandler', requireAgent);
-    await settingsRoutes(r, { db, auth, realtime, shortcuts, widgetSettings });
+    await settingsRoutes(r, { db, auth, realtime, shortcuts, widgetSettings, ai });
 
     r.get('/me', async (req) => {
       const [u] = await db.select().from(users).where(eq(users.id, req.agent.sub));
@@ -248,6 +250,18 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?:
         if (err instanceof EmailError) return reply.code(502).send({ error: err.message });
         throw err;
       }
+    });
+
+    // AI suggest: a draft of the agent's next reply (never sent automatically).
+    r.post<{ Params: { id: string } }>('/conversations/:id/suggest', { preHandler: limit('suggest', 30, 60, (req) => req.agent.sub) }, async (req, reply) => {
+      const conv = await conversations.get(req.agent.acc, req.params.id);
+      if (!conv) return reply.code(404).send({ error: 'not_found' });
+      const v = await visitors.get(req.agent.acc, conv.visitorId);
+      return ai.suggest(req.agent.acc, {
+        messages: await conversations.listMessages(conv.id, { includeInternal: false }),
+        visitorName: v?.name ?? null,
+        agentName: req.agent.name,
+      });
     });
 
     r.get('/settings/email', async () => ({ enabled: mailer.enabled, from: mailer.from, replyTo: mailer.replyTo }) satisfies EmailStatus);

@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
-import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
-import type { WidgetSettings } from '@replyfinch/shared';
+import { bigint, boolean, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import type { AiSettings, WidgetSettings } from '@replyfinch/shared';
 
 // Every tenant-owned table carries account_id so customers can later be split
 // across database clusters ("cells") without a rewrite.
@@ -12,6 +12,7 @@ export const accounts = pgTable('accounts', {
   name: text('name').notNull(),
   /** Chat widget look and questions; null until an admin saves them (defaults apply). */
   widgetSettings: jsonb('widget_settings').$type<Partial<WidgetSettings>>(),
+  aiSettings: jsonb('ai_settings').$type<Partial<AiSettings>>(),
   createdAt: createdAt(),
 });
 
@@ -175,4 +176,17 @@ export const offlineReplies = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('offline_replies_message_idx').on(t.offlineMessageId, t.createdAt)],
+);
+
+/** AI suggest usage per account per month, for the spending cap and the meter. */
+export const aiUsage = pgTable(
+  'ai_usage',
+  {
+    accountId: text('account_id').notNull().references(() => accounts.id),
+    month: text('month').notNull(), // YYYY-MM (UTC)
+    suggestions: integer('suggestions').notNull().default(0),
+    /** Cost in millionths of a dollar. */
+    costMicros: bigint('cost_micros', { mode: 'number' }).notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.accountId, t.month] })],
 );

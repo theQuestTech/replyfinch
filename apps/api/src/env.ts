@@ -15,6 +15,9 @@ const schema = z.object({
   EMAIL_REPLY_TO: z.string().trim().optional(),
   /** Development/tests only: "log" keeps emails in memory (GET /dev/outbox) instead of sending them. */
   EMAIL_TRANSPORT: z.enum(['resend', 'log']).default('resend'),
+  // AI suggest (optional). Without a key, AI suggest uses free mode (best matching saved reply).
+  ANTHROPIC_API_KEY: z.string().trim().optional(),
+  AI_MODEL: z.string().trim().default('claude-haiku-5-5'),
 });
 
 const parsed = schema.parse(process.env);

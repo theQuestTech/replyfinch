@@ -83,6 +83,7 @@ export const widgetSettingsSchema = z.object({
   phoneField: z.enum(['optional', 'required', 'hidden']),
   departmentField: z.enum(['shown', 'hidden']),
   ratings: z.boolean(),
+  typingPreview: z.boolean(),
 });
 
 export const chatRateSchema = z.object({

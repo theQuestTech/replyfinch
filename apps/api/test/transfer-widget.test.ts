@@ -182,6 +182,7 @@ describe('widget settings', () => {
       phoneField: 'required',
       departmentField: 'shown',
       ratings: true,
+      typingPreview: true,
     };
     expect((await call('PUT', '/settings/widget', daniel.token, next)).status).toBe(403);
     expect((await call('PUT', '/settings/widget', maya.token, { ...next, color: 'teal' })).status).toBe(400);

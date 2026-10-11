@@ -122,6 +122,8 @@ export interface WidgetSettings {
   emailField: 'optional' | 'required' | 'hidden';
   /** Ask visitors to rate the chat when it ends. */
   ratings: boolean;
+  /** Agents see what a visitor is typing before they send it ("sneak peek"). */
+  typingPreview: boolean;
 }
 
 export const DEFAULT_WIDGET_SETTINGS: WidgetSettings = {
@@ -134,6 +136,7 @@ export const DEFAULT_WIDGET_SETTINGS: WidgetSettings = {
   phoneField: 'optional',
   emailField: 'optional',
   ratings: true,
+  typingPreview: true,
 };
 
 export interface WidgetConfig extends WidgetSettings {

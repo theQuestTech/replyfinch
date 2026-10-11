@@ -24,6 +24,8 @@ export interface VisitorClientEvents {
   ) => void;
   'message:send': (p: { conversationId: string; body: string; clientId: string }, ack: Ack<Message>) => void;
   typing: (p: { conversationId: string; isTyping: boolean }) => void;
+  /** What the visitor has typed so far (not sent yet); '' when cleared. Only when typing preview is on. */
+  'typing:preview': (p: { conversationId: string; text: string }) => void;
   'chat:end': (p: { conversationId: string }) => void;
   /** Email the visitor a copy of an ended chat. */
   'chat:transcript': (p: { conversationId: string; email: string }, ack: Ack<{ to: string }>) => void;
@@ -81,6 +83,8 @@ export interface AgentServerEvents {
   'message:new': (m: Message) => void;
   typing: (p: TypingPayload) => void;
   'team:update': (t: TeamMember[]) => void;
+  /** A visitor's unsent text (typing preview); '' when they cleared it or sent it. */
+  'typing:preview': (p: { conversationId: string; text: string }) => void;
   /** A chat was transferred to you. */
   'chat:transferred': (p: { conversation: Conversation; fromName: string; note: string | null }) => void;
   /** A visitor left a message while nobody was online. */

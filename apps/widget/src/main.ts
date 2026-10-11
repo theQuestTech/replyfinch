@@ -79,6 +79,8 @@ class ReplyfinchWidget {
   private agentTyping: string | null = null;
   private typingTimer: number | undefined;
   private agentTypingTimer: number | undefined;
+  private previewTimer: number | undefined;
+  private previewSent = '';
   private isTyping = false;
 
   private root!: ShadowRoot;
@@ -575,6 +577,7 @@ class ReplyfinchWidget {
       if (!body) return;
       ta.value = '';
       this.setTyping(false);
+      this.sendPreview('', true);
       this.send(body);
     };
     ta.addEventListener('keydown', (e) => {
@@ -587,6 +590,7 @@ class ReplyfinchWidget {
       ta.style.height = 'auto';
       ta.style.height = `${Math.min(ta.scrollHeight, 120)}px`;
       this.setTyping(ta.value.length > 0);
+      this.sendPreview(ta.value);
     });
     send.addEventListener('click', submit);
     c.append(ta, send);
@@ -772,9 +776,29 @@ class ReplyfinchWidget {
     this.body.append(el('div', { class: 'system' }, 'Message not sent — check your connection and try again.'));
   }
 
+  /**
+   * Typing preview: share the unsent text with agents, at most every 300 ms
+   * (only if the account has it switched on).
+   */
+  private sendPreview(text: string, now = false) {
+    if (!this.socket || !this.conversation || !this.config?.typingPreview) return;
+    const conversationId = this.conversation.id;
+    const flush = () => {
+      const t = text.slice(0, 1000);
+      if (t === this.previewSent) return;
+      this.previewSent = t;
+      this.socket?.emit('typing:preview', { conversationId, text: t });
+    };
+    window.clearTimeout(this.previewTimer);
+    if (now) return flush();
+    this.previewTimer = window.setTimeout(flush, 300);
+  }
+
   /** Forget typing state from a previous chat. */
   private resetTyping() {
     window.clearTimeout(this.typingTimer);
+    window.clearTimeout(this.previewTimer);
+    this.previewSent = '';
     window.clearTimeout(this.agentTypingTimer);
     this.isTyping = false;
     this.agentTyping = null;

@@ -217,3 +217,34 @@ describe('integrity', () => {
     expect(after?.status).toBe('offline');
   });
 });
+
+describe('typing preview', () => {
+  it('shows agents what a visitor is typing — only for their own chat, and only when switched on', async () => {
+    const maya = await login('maya@replyfinch.dev');
+    const m = await connected(maya.token);
+    const v = await visitor();
+    const { conversation } = await emitAck<{ conversation: Conversation }>(v.socket, 'chat:start', { name: 'Peek', message: 'hello', clientId: 'p1' });
+    const seen = waitFor<{ conversationId: string; text: string }>(m, 'typing:preview', (p) => p.text === 'Where is my ord');
+    v.socket.emit('typing:preview', { conversationId: conversation.id, text: 'Where is my ord' });
+    expect(await seen).toEqual({ conversationId: conversation.id, text: 'Where is my ord' });
+
+    // Another visitor can't send previews into this chat.
+    const other = await visitor();
+    const leaked: unknown[] = [];
+    m.on('typing:preview', (p) => p.text === 'spoof' && leaked.push(p));
+    other.socket.emit('typing:preview', { conversationId: conversation.id, text: 'spoof' });
+
+    // Switched off: nothing is relayed (the server re-reads the setting within a minute; a new visitor connection reads it now).
+    const settings = (await call<WidgetSettings & { accountName: string }>('GET', '/settings/widget', maya.token)).body;
+    const { accountName: _, ...rest } = settings;
+    await call('PUT', '/settings/widget', maya.token, { ...rest, typingPreview: false });
+    const v2 = await visitor();
+    const c2 = await emitAck<{ conversation: Conversation }>(v2.socket, 'chat:start', { name: 'Private', message: 'hi', clientId: 'p2' });
+    m.on('typing:preview', (p) => p.text === 'secret' && leaked.push(p));
+    v2.socket.emit('typing:preview', { conversationId: c2.conversation.id, text: 'secret' });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(leaked).toEqual([]);
+    await call('PUT', '/settings/widget', maya.token, rest);
+    m.disconnect();
+  });
+});

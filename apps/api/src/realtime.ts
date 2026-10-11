@@ -62,7 +62,7 @@ interface Deps {
   corsOrigins: string[];
   leaveGraceMs?: number;
   isActiveAgent: (userId: string, iat?: number) => Promise<boolean>;
-  widgetSettings: { get: (acc: string) => Promise<{ ratings: boolean }> };
+  widgetSettings: { get: (acc: string) => Promise<{ ratings: boolean; typingPreview: boolean }> };
 }
 
 /**
@@ -410,6 +410,24 @@ export function createRealtime(d: Deps) {
         name: record?.name ?? 'Visitor',
         isTyping: !!p.isTyping,
       });
+    });
+
+    // Typing preview: sent every few hundred ms while typing, so avoid a database query each time.
+    const ownOpenChats = new Set<string>();
+    let previewOn: { value: boolean; at: number } | null = null;
+    on('typing:preview', async (...[p]: Parameters<VisitorClientEvents['typing:preview']>) => {
+      if (!p || typeof p.conversationId !== 'string' || typeof p.text !== 'string') return;
+      if (!previewOn || Date.now() - previewOn.at > 60_000) {
+        previewOn = { value: (await d.widgetSettings.get(acc)).typingPreview, at: Date.now() };
+      }
+      if (!previewOn.value) return;
+      if (!ownOpenChats.has(p.conversationId)) {
+        const conv = await d.conversations.get(acc, p.conversationId);
+        if (!conv || conv.visitorId !== vid || conv.status === 'ended') return;
+        ownOpenChats.add(conv.id);
+      }
+      if (!(await allow(`preview:${vid}`, 80, 10))) return;
+      toAgents(acc).emit('typing:preview', { conversationId: p.conversationId, text: p.text.slice(0, 1000) });
     });
 
     on('chat:end', async (...[p]: Parameters<VisitorClientEvents['chat:end']>) => {

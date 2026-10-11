@@ -16,19 +16,22 @@ export function Transcript({
   messages,
   pending = [],
   typingName,
+  preview,
   empty,
   meId,
 }: {
   messages: Message[];
   pending?: PendingMessage[];
   typingName?: string | null;
+  /** What the visitor has typed but not sent (typing preview). */
+  preview?: string;
   empty?: React.ReactNode;
   meId?: string;
 }) {
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
     end.current?.scrollIntoView({ block: 'end' });
-  }, [messages.length, pending.length, typingName]);
+  }, [messages.length, pending.length, typingName, !!preview]);
 
   // Group consecutive messages by the same author into one block.
   const groups: Message[][] = [];
@@ -60,15 +63,27 @@ export function Transcript({
           </div>
         </div>
       ))}
-      {typingName && (
-        <div className="flex items-center gap-2.5">
-          <Avatar text={initials(typingName)} size={28} />
-          <span className="flex gap-1 rounded-[14px] rounded-bl border border-line bg-surface px-3 py-3">
-            {[0, 1, 2].map((i) => (
-              <span key={i} className="size-1.5 animate-bounce rounded-full bg-ink-2" style={{ animationDelay: `${i * 120}ms` }} />
-            ))}
-          </span>
-          <span className="text-[11px] font-medium text-ink-2">{typingName} is typing…</span>
+      {(typingName || preview) && (
+        <div className="flex items-end gap-2.5" data-testid="typing-preview">
+          <Avatar text={initials(typingName ?? 'V')} size={28} />
+          {preview ? (
+            // Typing preview: the visitor's unsent text, faded so it reads as "not sent yet".
+            <div className="flex max-w-[70%] flex-col gap-1">
+              <span className="text-[11px] font-medium text-ink-2">{typingName ?? 'Visitor'} is typing…</span>
+              <span className="rounded-[14px] rounded-bl border border-dashed border-line bg-surface/60 px-3 py-2 text-[13px] whitespace-pre-wrap break-words text-ink-2 italic">
+                {preview}
+              </span>
+            </div>
+          ) : (
+            <>
+              <span className="flex gap-1 rounded-[14px] rounded-bl border border-line bg-surface px-3 py-3">
+                {[0, 1, 2].map((i) => (
+                  <span key={i} className="size-1.5 animate-bounce rounded-full bg-ink-2" style={{ animationDelay: `${i * 120}ms` }} />
+                ))}
+              </span>
+              <span className="text-[11px] font-medium text-ink-2">{typingName} is typing…</span>
+            </>
+          )}
         </div>
       )}
       <div ref={end} />

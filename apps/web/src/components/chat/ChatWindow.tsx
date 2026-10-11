@@ -46,6 +46,7 @@ export function ChatWindow({ visitorId, mode }: { visitorId: string; mode: ChatM
   const conversation = useDesk((s) => (convId ? s.conversations[convId] : undefined));
   const messages = useDesk((s) => (convId ? s.messages[convId] : undefined));
   const typingName = useDesk((s) => (convId ? s.typing[convId] : null));
+  const preview = useDesk((s) => (convId ? s.preview[convId] : undefined));
   const { setMode, minimize, closeChat, upsertConversation, setMessages } = useDesk.getState();
   const [tab, setTab] = useState<Tab>('current');
   const connectedAt = useDesk((s) => s.connectedAt);
@@ -181,6 +182,7 @@ export function ChatWindow({ visitorId, mode }: { visitorId: string; mode: ChatM
                 conversation={conversation}
                 messages={messages ?? []}
                 typingName={typingName}
+                preview={preview}
                 joined={joined}
                 meId={me.id}
                 onStarted={(c, msgs) => {
@@ -248,6 +250,7 @@ function CurrentChat({
   conversation,
   messages,
   typingName,
+  preview,
   joined,
   meId,
   onStarted,
@@ -259,6 +262,7 @@ function CurrentChat({
   conversation?: Conversation;
   messages: Message[];
   typingName: string | null | undefined;
+  preview: string | undefined;
   joined: boolean;
   meId: string;
   onStarted: (c: Conversation, m: Message[]) => void;
@@ -308,7 +312,14 @@ function CurrentChat({
   const visibleMessages = ended || open ? messages : [];
   return (
     <>
-      <Transcript messages={visibleMessages} pending={pending} typingName={open ? typingName : null} empty={emptyState} meId={meId} />
+      <Transcript
+        messages={visibleMessages}
+        pending={pending}
+        typingName={open ? typingName : null}
+        preview={open ? preview : undefined}
+        empty={emptyState}
+        meId={meId}
+      />
       {visitorLeft && !open ? (
         <div className="border-t border-line bg-surface px-4 py-4 text-center text-sm text-ink-2">{visitorName} has left the website.</div>
       ) : (

@@ -114,6 +114,7 @@ export function useRealtime() {
         },
       });
     });
+    s.on('typing:preview', ({ conversationId, text }) => useDesk.getState().setPreview(conversationId, text));
     s.on('typing', (t) => {
       if (t.authorType !== 'visitor') return;
       useDesk.getState().setTyping(t.conversationId, t.isTyping ? t.name : null);

@@ -16,6 +16,8 @@ interface DeskState {
   messages: Record<string, Message[]>;
   /** conversationId → name of the visitor currently typing */
   typing: Record<string, string | null>;
+  /** conversationId → what the visitor has typed but not sent yet (typing preview) */
+  preview: Record<string, string>;
   team: TeamMember[];
   /** Visitors whose chat windows are open (the dock / tabs), in open order. */
   openTabs: string[];
@@ -34,6 +36,7 @@ interface DeskState {
   setMessages: (conversationId: string, m: Message[]) => void;
   addMessage: (m: Message) => void;
   setTyping: (conversationId: string, name: string | null) => void;
+  setPreview: (conversationId: string, text: string) => void;
   setTeam: (t: TeamMember[]) => void;
   openChat: (visitorId: string, mode?: ChatMode) => void;
   /** Put a chat in the dock (with an unread mark) without opening it. */
@@ -51,6 +54,7 @@ const initial = {
   conversations: {},
   messages: {},
   typing: {},
+  preview: {},
   team: [],
   openTabs: [],
   active: null,
@@ -116,12 +120,20 @@ export const useDesk = create<DeskState>((set, get) => ({
           ? { ...s.unread, [visitorId]: (s.unread[visitorId] ?? 0) + 1 }
           : s.unread;
       const typing = m.authorType === 'visitor' ? { ...s.typing, [m.conversationId]: null } : s.typing;
+      const preview = m.authorType === 'visitor' ? { ...s.preview, [m.conversationId]: '' } : s.preview;
       const conversations =
         conv && m.authorType === 'visitor' ? { ...s.conversations, [conv.id]: { ...conv, preview: m.body, lastMessageAt: m.createdAt } } : s.conversations;
-      return { messages, unread, typing, conversations };
+      return { messages, unread, typing, preview, conversations };
     }),
 
-  setTyping: (conversationId, name) => set((s) => ({ typing: { ...s.typing, [conversationId]: name } })),
+  setTyping: (conversationId, name) =>
+    set((s) => ({
+      typing: { ...s.typing, [conversationId]: name },
+      // Stopped typing: the preview goes too.
+      ...(name ? {} : { preview: { ...s.preview, [conversationId]: '' } }),
+    })),
+
+  setPreview: (conversationId, text) => set((s) => ({ preview: { ...s.preview, [conversationId]: text } })),
 
   setTeam: (team) => set({ team }),
 

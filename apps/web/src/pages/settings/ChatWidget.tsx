@@ -166,6 +166,25 @@ function WidgetForm({ initial }: { initial: Settings }) {
           </Card>
 
           <Card className="flex flex-col gap-4 p-6">
+            <h3 className="text-base font-bold">During the chat</h3>
+            <label className="flex cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                className="mt-1 size-4 accent-primary"
+                checked={s.typingPreview}
+                onChange={(e) => set({ typingPreview: e.target.checked })}
+              />
+              <span>
+                <span className="block text-sm font-semibold">Show what visitors are typing</span>
+                <span className="block text-xs text-ink-2">
+                  Agents see a visitor’s message as they type it, before they press send, so you can prepare an answer. The text isn’t saved
+                  unless they send it. Consider mentioning this in your website’s privacy policy.
+                </span>
+              </span>
+            </label>
+          </Card>
+
+          <Card className="flex flex-col gap-4 p-6">
             <h3 className="text-base font-bold">After the chat</h3>
             <label className="flex cursor-pointer items-start gap-3">
               <input type="checkbox" className="mt-1 size-4 accent-primary" checked={s.ratings} onChange={(e) => set({ ratings: e.target.checked })} />

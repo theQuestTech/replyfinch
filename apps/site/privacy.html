@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Privacy — Replyfinch</title>
+    <meta name="description" content="How Replyfinch handles information, in plain words." />
+    <meta name="theme-color" content="#14213D" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body class="bg-canvas">
+    <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-surface focus:px-4 focus:py-2">Skip to content</a>
+
+    <header class="sticky top-0 z-40 border-b border-white/10 bg-navy/95 backdrop-blur">
+      <nav class="mx-auto flex h-16 max-w-6xl items-center gap-6 px-5" aria-label="Main">
+        <a href="/" class="flex items-center gap-2.5 text-white" aria-label="Replyfinch home">
+          <img src="/favicon.svg" alt="" width="34" height="34" />
+          <span class="text-[18px] font-bold tracking-tight">Replyfinch</span>
+        </a>
+        <div class="hidden flex-1 items-center gap-6 text-[15px] text-on-navy md:flex">
+          <a href="/#features" class="hover:text-white">Features</a>
+          <a href="/#how" class="hover:text-white">How it works</a>
+          <a href="/#pricing" class="hover:text-white">Pricing</a>
+          <a href="/#faq" class="hover:text-white">FAQ</a>
+        </div>
+        <div class="ml-auto hidden items-center gap-3 md:flex">
+          <a data-app-link="/login" href="#" class="px-2 text-[15px] font-semibold text-white hover:text-gold">Sign in</a>
+          <a href="/early-access" class="btn-gold !py-2.5">Get early access</a>
+        </div>
+        <button data-menu-toggle aria-expanded="false" aria-controls="mobile-menu" aria-label="Menu" class="ml-auto rounded-lg p-2 text-white md:hidden">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button>
+      </nav>
+      <div id="mobile-menu" data-menu class="hidden border-t border-white/10 px-5 pt-2 pb-5 md:hidden">
+        <div class="flex flex-col gap-1 text-[16px] text-white">
+          <a href="/#features" class="rounded-lg px-2 py-2.5 hover:bg-white/10">Features</a>
+          <a href="/#how" class="rounded-lg px-2 py-2.5 hover:bg-white/10">How it works</a>
+          <a href="/#pricing" class="rounded-lg px-2 py-2.5 hover:bg-white/10">Pricing</a>
+          <a href="/#faq" class="rounded-lg px-2 py-2.5 hover:bg-white/10">FAQ</a>
+          <a data-app-link="/login" href="#" class="rounded-lg px-2 py-2.5 hover:bg-white/10">Sign in</a>
+          <a href="/early-access" class="btn-gold mt-2">Get early access</a>
+        </div>
+      </div>
+    </header>
+
+        <main id="main">
+      <article class="prose-page mx-auto max-w-3xl px-5 py-16 md:py-20">
+        <h1 class="text-[36px] leading-tight font-extrabold tracking-tight text-ink">Privacy</h1>
+        <p class="mt-3">Last updated <span data-updated>October 2026</span>. This page explains, in plain words, what information Replyfinch keeps and why.</p>
+
+        <h2>Who we are</h2>
+        <p>Replyfinch is made by Quest Tech. If you have a question about your information, use the chat on this site.</p>
+
+        <h2>If you ask for early access</h2>
+        <p>We keep the name, email, company, website and message you send, to set up your account and talk to you about it. We don’t sell it or use it for anything else.</p>
+
+        <h2>For businesses using Replyfinch</h2>
+        <p>Businesses use Replyfinch to chat with visitors on their websites. For each business, Replyfinch stores:</p>
+        <ul>
+          <li>Conversations, offline messages, tickets and the replies sent to customers.</li>
+          <li>What visitors tell the business: name, email and phone number, if they give them.</li>
+          <li>Basic visit details used to help the business serve the visitor: pages viewed on the website, browser and device type, time zone, and country (worked out from the connection, not stored as an address).</li>
+          <li>Notes, tags and ratings.</li>
+        </ul>
+        <p>The business decides what to collect and controls this information. Visitors with questions about it should contact the business they chatted with.</p>
+
+        <h2>Typing preview</h2>
+        <p>Businesses can turn on a feature that shows agents a message while the visitor is typing it. This text is only shown live and is not saved unless the visitor sends it.</p>
+
+        <h2>Cookies and storage</h2>
+        <p>The chat button saves a small random identifier in the visitor’s browser so a chat can continue across pages and visits. Replyfinch doesn’t use advertising cookies or trackers.</p>
+
+        <h2>Where it’s kept</h2>
+        <p>Information is stored with our hosting providers (Railway for the database and servers, Vercel for the website). Emails are sent through Resend. Data is sent over encrypted connections.</p>
+
+        <h2>Changes</h2>
+        <p>If we change how we handle information, we’ll update this page and the date above.</p>
+      </article>
+    </main>
+
+    <footer class="border-t border-line bg-surface py-10">
+      <div class="mx-auto flex max-w-6xl flex-col gap-6 px-5 text-[14px] text-ink-2 md:flex-row md:items-center">
+        <a href="/" class="flex items-center gap-2 font-bold text-ink"><img src="/favicon.svg" alt="" width="24" height="24" /> Replyfinch</a>
+        <nav class="flex flex-wrap gap-x-6 gap-y-2" aria-label="Footer">
+          <a href="/#features" class="hover:text-ink">Features</a>
+          <a href="/#pricing" class="hover:text-ink">Pricing</a>
+          <a href="/early-access" class="hover:text-ink">Early access</a>
+          <a href="/privacy" class="hover:text-ink">Privacy</a>
+          <a data-app-link="/login" href="#" class="hover:text-ink">Sign in</a>
+        </nav>
+        <p class="md:ml-auto">© <span data-year>2026</span> Quest Tech</p>
+      </div>
+    </footer>
+  </body>
+</html>

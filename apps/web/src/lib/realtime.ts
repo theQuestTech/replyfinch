@@ -129,7 +129,12 @@ export function useRealtime() {
         kind: 'ticket',
         agentStatus: myStatus(),
         viewingThisChat: false,
-        title: kind === 'reply' ? `${from} replied to ticket #${ticket.number}` : `New ticket #${ticket.number} by email from ${from}`,
+        title:
+          kind === 'reply'
+            ? `${from} replied to ticket #${ticket.number}`
+            : ticket.source === 'website'
+              ? `${from} asked for early access (ticket #${ticket.number})`
+              : `New ticket #${ticket.number} by email from ${from}`,
         body: preview,
         tag: `ticket-email-${ticket.id}`,
         onClick: () => goTo(`/tickets/${ticket.id}`),

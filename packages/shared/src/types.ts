@@ -341,7 +341,7 @@ export interface Ticket {
   visitorId: string | null;
   requesterName: string | null;
   requesterEmail: string | null;
-  source: 'manual' | 'chat' | 'offline' | 'email';
+  source: 'manual' | 'chat' | 'offline' | 'email' | 'website';
   sourceId: string | null;
   createdByName: string | null;
   createdAt: number;

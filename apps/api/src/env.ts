@@ -25,6 +25,8 @@ const schema = z.object({
     .optional(),
   /** The signing secret ("whsec_…") of the Resend webhook for received emails. */
   RESEND_WEBHOOK_SECRET: z.string().trim().optional(),
+  /** The account that receives "Request early access" forms from the Replyfinch website, as tickets. */
+  SITE_LEADS_ACCOUNT_ID: z.string().trim().optional(),
   // AI suggest (optional). Without a key, AI suggest uses free mode (best matching saved reply).
   ANTHROPIC_API_KEY: z.string().trim().optional(),
   AI_MODEL: z.string().trim().default('claude-haiku-5-5'),

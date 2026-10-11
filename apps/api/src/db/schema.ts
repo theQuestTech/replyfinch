@@ -206,8 +206,8 @@ export const tickets = pgTable(
     visitorId: text('visitor_id').references(() => visitors.id),
     requesterName: text('requester_name'),
     requesterEmail: text('requester_email'),
-    /** Where it came from: typed in by an agent, a chat, an offline message, or an email to the support address. */
-    source: text('source', { enum: ['manual', 'chat', 'offline', 'email'] }).notNull().default('manual'),
+    /** Where it came from: typed in by an agent, a chat, an offline message, an email to the support address, or a website form. */
+    source: text('source', { enum: ['manual', 'chat', 'offline', 'email', 'website'] }).notNull().default('manual'),
     sourceId: text('source_id'),
     createdBy: text('created_by').references(() => users.id),
     createdAt: createdAt(),

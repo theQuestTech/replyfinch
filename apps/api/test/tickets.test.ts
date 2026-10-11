@@ -276,4 +276,21 @@ describe('tickets', () => {
       expect(found.body.items.map((x) => x.id)).toContain(t.body.id);
     }
   });
+
+  it('turns the website’s early-access form into a ticket', async () => {
+    const maya = await login('maya@replyfinch.dev');
+    const form = { name: 'Sam Lee', email: 'Sam@Bakery.example', company: 'Sam’s Bakery', website: 'bakery.example', teamSize: '2-5', message: 'We get lots of order questions.' };
+    expect((await call<{ ok: boolean }>('POST', '/widget/site/early-access', undefined, form)).body.ok).toBe(true);
+    const list = (await call<TicketList>('GET', `/tickets?view=all&q=${encodeURIComponent('Sam’s Bakery')}`, maya.token)).body;
+    expect(list.items[0]).toMatchObject({ subject: 'Early access: Sam’s Bakery', source: 'website', requesterEmail: 'sam@bakery.example', status: 'open' });
+    const d = (await call<Detail>('GET', `/tickets/${list.items[0]!.id}`, maya.token)).body;
+    expect(d.messages[0]).toMatchObject({
+      kind: 'customer',
+      body: 'Company: Sam’s Bakery\nWebsite: bakery.example\nTeam size: 2-5\n\nWe get lots of order questions.',
+    });
+    // Bots that fill the hidden field get a thank-you, and no ticket.
+    await call('POST', '/widget/site/early-access', undefined, { ...form, company: 'Spam Inc', fax: 'x' });
+    expect((await call<TicketList>('GET', '/tickets?view=all&q=Spam', maya.token)).body.total).toBe(0);
+    expect((await call<{ error: string }>('POST', '/widget/site/early-access', undefined, { name: 'x', email: 'nope' })).body.error).toBe('Please check your email address');
+  });
 });

@@ -249,3 +249,15 @@ export const helpArticlePatchSchema = z.object({
 export const helpSearchSchema = z.object({ q: z.string().trim().max(200).default('') });
 
 export const helpFeedbackSchema = z.object({ helpful: z.boolean() });
+
+/** "Request early access" on the Replyfinch website. */
+export const earlyAccessSchema = z.object({
+  name: z.string().trim().min(1, 'Please add your name').max(120),
+  email: z.email('Please check your email address'),
+  company: z.string().trim().max(120).default(''),
+  website: z.union([z.string().trim().max(300), z.literal('')]).default(''),
+  teamSize: z.enum(['1', '2-5', '6-20', '21+', '']).default(''),
+  message: z.string().trim().max(2000).default(''),
+  /** A field people can't see: bots fill it in. */
+  fax: z.string().max(200).optional(),
+});

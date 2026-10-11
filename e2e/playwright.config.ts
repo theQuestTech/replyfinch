@@ -28,5 +28,6 @@ export default defineConfig({
     },
     { command: 'pnpm --filter @replyfinch/web dev', url: 'http://localhost:5173', reuseExistingServer: true, timeout: 60_000, cwd: '..' },
     { command: 'pnpm --filter @replyfinch/widget dev', url: 'http://localhost:5174', reuseExistingServer: true, timeout: 60_000, cwd: '..' },
+    { command: 'pnpm --filter @replyfinch/site dev', url: 'http://localhost:5175', reuseExistingServer: true, timeout: 60_000, cwd: '..' },
   ],
 });

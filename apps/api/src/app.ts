@@ -4,6 +4,7 @@ import { Redis } from 'ioredis';
 import { eq } from 'drizzle-orm';
 import {
   customersQuerySchema,
+  earlyAccessSchema,
   historyQuerySchema,
   loginSchema,
   offlineReplySchema,
@@ -387,6 +388,39 @@ export async function buildApp(
         helpArticles: await help.publishedCount(account.id),
       } satisfies WidgetConfig,
     };
+  });
+
+  // "Request early access" on the Replyfinch website: becomes a ticket for the Replyfinch team.
+  const leadsAccount = env.SITE_LEADS_ACCOUNT_ID || (env.NODE_ENV === 'production' ? null : 'acc_demo');
+  app.post('/widget/site/early-access', { preHandler: limit('early-access', 5, 600) }, async (req, reply) => {
+    const parsed = earlyAccessSchema.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'invalid_input' });
+    const b = parsed.data;
+    if (b.fax) return { ok: true }; // a bot filled in the hidden field: pretend it worked
+    const acc = leadsAccount ? await visitors.accountExists(leadsAccount) : null;
+    if (!acc) return reply.code(404).send({ error: 'not_configured' });
+    const customer = await tickets.findOrCreateCustomer(acc.id, b.name, b.email.toLowerCase());
+    const details = [
+      b.company && `Company: ${b.company}`,
+      b.website && `Website: ${b.website}`,
+      b.teamSize && `Team size: ${b.teamSize}`,
+      b.message && `\n${b.message}`,
+    ].filter(Boolean);
+    const body = details.length ? details.join('\n') : 'Asked for early access.';
+    const row = await tickets.create(acc.id, {
+      subject: `Early access: ${b.company || b.name}`,
+      priority: 'normal',
+      assigneeId: null,
+      visitorId: customer?.id ?? null,
+      requesterName: b.name,
+      requesterEmail: b.email.toLowerCase(),
+      source: 'website',
+      sourceId: null,
+      createdBy: { id: null, name: b.name },
+      messages: [{ kind: 'customer', author: { id: null, name: b.name }, body }],
+    });
+    realtime.customerEmail(acc.id, { ticket: await tickets.dto(row), kind: 'created', from: b.name, preview: body });
+    return { ok: true };
   });
 
   await inboundRoutes(app, {

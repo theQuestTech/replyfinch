@@ -8,7 +8,7 @@ import type { Realtime } from '../realtime';
 import type { ConversationService } from '../services/conversations';
 import type { MailActions } from '../services/mail-actions';
 import type { OfflineService } from '../services/offline';
-import type { TicketService } from '../services/tickets';
+import { offlineThread, type TicketService } from '../services/tickets';
 import type { VisitorService } from '../services/visitors';
 
 type Deps = {
@@ -73,11 +73,7 @@ export async function ticketRoutes(r: FastifyInstance, d: Deps) {
       source = 'offline';
       sourceId = m.id;
       offlineId = m.id;
-      // The customer's message and any emailed answers start the thread.
-      messages.push({ kind: 'customer', author: { id: null, name: m.name }, body: m.message, createdAt: m.createdAt });
-      for (const rep of await d.offline.replies(acc, m.id)) {
-        messages.push({ kind: 'reply', author: { id: null, name: rep.authorName }, body: rep.body, emailedTo: rep.to, createdAt: new Date(rep.createdAt) });
-      }
+      messages.push(...(await offlineThread(d.offline, m)));
     } else if (b.visitorId) {
       const v = await d.visitors.get(acc, b.visitorId);
       if (!v) return reply.code(404).send({ error: 'not_found' });

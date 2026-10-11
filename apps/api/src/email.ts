@@ -5,6 +5,8 @@ export interface OutgoingEmail {
   subject: string;
   text: string;
   html: string;
+  /** Overrides the default reply address, e.g. a ticket's private reply address. */
+  replyTo?: string;
 }
 
 export interface Mailer {
@@ -54,7 +56,14 @@ export function createMailer(cfg: { apiKey?: string; from?: string; replyTo?: st
       const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ from, to: [email.to], subject: email.subject, text: email.text, html: email.html, ...(replyTo ? { reply_to: replyTo } : {}) }),
+        body: JSON.stringify({
+          from,
+          to: [email.to],
+          subject: email.subject,
+          text: email.text,
+          html: email.html,
+          ...(email.replyTo || replyTo ? { reply_to: email.replyTo || replyTo } : {}),
+        }),
         signal: AbortSignal.timeout(15_000),
       }).catch((e: Error) => {
         throw new EmailError(`Couldn’t reach the email service (${e.message})`);
@@ -181,4 +190,32 @@ On ${esc(when(p.quoted.createdAt))} you wrote:<br>${paragraphs(p.quoted.body)}</
     }`,
   );
   return { subject, text, html };
+}
+
+/** Reads a received email's full content (Resend only sends its id in the webhook). */
+export async function fetchReceivedEmail(apiKey: string, id: string): Promise<ReceivedEmail> {
+  const res = await fetch(`https://api.resend.com/emails/receiving/${encodeURIComponent(id)}`, {
+    headers: { authorization: `Bearer ${apiKey}` },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { message?: string };
+    throw new EmailError(`Couldn’t read the received email (${res.status}${body.message ? `: ${body.message}` : ''})`);
+  }
+  return (await res.json()) as ReceivedEmail;
+}
+
+/** The fields of Resend's "retrieve received email" response that Replyfinch uses. */
+export interface ReceivedEmail {
+  id: string;
+  from: string;
+  to: string[];
+  cc?: string[] | null;
+  received_for?: string[] | null;
+  subject: string | null;
+  text: string | null;
+  html: string | null;
+  headers?: Record<string, string> | null;
+  authentication?: { spf?: string; dkim?: string; dmarc?: string } | null;
+  attachments?: { filename: string | null }[] | null;
 }

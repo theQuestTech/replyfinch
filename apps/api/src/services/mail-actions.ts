@@ -13,6 +13,8 @@ export function createMailActions(d: {
   conversations: ConversationService;
   offline: OfflineService;
   widgetSettings: WidgetSettingsService;
+  /** Private reply addresses, when receiving email is set up: customers' replies come back into Replyfinch. */
+  replyAddress?: { ticket: (id: string) => string | null; offline: (id: string) => string | null };
 }) {
   const brand = async (acc: string) => {
     const s = await d.widgetSettings.withName(acc);
@@ -38,7 +40,7 @@ export function createMailActions(d: {
         body,
         original: { message: m.message, createdAt: m.createdAt.getTime() },
       });
-      await d.mailer.send({ ...email, to: m.email });
+      await d.mailer.send({ ...email, to: m.email, replyTo: d.replyAddress?.offline(m.id) ?? undefined });
       const reply = await d.offline.addReply(acc, id, author, m.email, body);
       const updated = await d.offline.setStatus(acc, id, 'handled', author.id);
       return { reply, message: updated! };
@@ -56,7 +58,7 @@ export function createMailActions(d: {
         body,
         quoted,
       });
-      await d.mailer.send({ ...email, to: t.requesterEmail });
+      await d.mailer.send({ ...email, to: t.requesterEmail, replyTo: d.replyAddress?.ticket(t.id) ?? undefined });
       return t.requesterEmail;
     },
 

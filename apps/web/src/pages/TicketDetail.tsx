@@ -212,6 +212,13 @@ function Source({ ticket }: { ticket: Ticket }) {
       </>
     );
   }
+  if (ticket.source === 'email') {
+    return (
+      <div className="flex items-center gap-1.5">
+        <Mail className="size-3.5" /> From an email to your support address
+      </div>
+    );
+  }
   return <div>Created by hand</div>;
 }
 

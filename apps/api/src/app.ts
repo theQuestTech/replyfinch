@@ -33,7 +33,9 @@ import { createReportService } from './services/reports';
 import { createCustomerService } from './services/customers';
 import { createMailActions } from './services/mail-actions';
 import { createAiService, type AiClient } from './services/ai';
-import { createLogMailer, createMailer, EmailError, type Mailer } from './email';
+import { createLogMailer, createMailer, EmailError, fetchReceivedEmail, type Mailer, type ReceivedEmail } from './email';
+import { createInboundService } from './services/inbound';
+import { inboundRoutes } from './routes/inbound';
 import { settingsRoutes } from './routes/settings';
 import { ticketRoutes } from './routes/tickets';
 import { createTicketService } from './services/tickets';
@@ -46,7 +48,17 @@ declare module 'fastify' {
   }
 }
 
-export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?: Mailer; rateLimit?: boolean; aiClient?: AiClient | null } = {}) {
+export async function buildApp(
+  env: Env,
+  opts: {
+    leaveGraceMs?: number;
+    mailer?: Mailer;
+    rateLimit?: boolean;
+    aiClient?: AiClient | null;
+    /** Tests: read received emails from here instead of Resend's API. */
+    fetchReceivedEmail?: (id: string) => Promise<ReceivedEmail>;
+  } = {},
+) {
   const app = Fastify({
     logger: env.NODE_ENV === 'development' ? { level: 'info' } : env.NODE_ENV === 'production',
     // Railway (and most hosts) put a proxy in front: use the client's real IP for rate limits.
@@ -69,7 +81,22 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?:
   const customers = createCustomerService(db, history, offline, tickets);
   const logMailer = env.EMAIL_TRANSPORT === 'log' && env.NODE_ENV !== 'production' ? createLogMailer(env.EMAIL_FROM ?? 'Replyfinch <dev@replyfinch.dev>') : null;
   const mailer = opts.mailer ?? logMailer ?? createMailer({ apiKey: env.RESEND_API_KEY, from: env.EMAIL_FROM, replyTo: env.EMAIL_REPLY_TO });
-  const mail = createMailActions({ mailer, conversations, offline, widgetSettings });
+  // Receiving email: on when there's a domain for reply addresses (Resend → Receiving).
+  const inbound = createInboundService({
+    tickets,
+    offline,
+    domain: env.INBOUND_DOMAIN || (logMailer ? 'inbound.replyfinch.test' : null),
+    secret: env.JWT_SECRET,
+    ownAddress: mailer.from,
+    onTicket: (acc, ticket, e) => realtime.customerEmail(acc, { ticket, ...e }),
+  });
+  const mail = createMailActions({
+    mailer,
+    conversations,
+    offline,
+    widgetSettings,
+    replyAddress: inbound.enabled ? { ticket: inbound.ticketAddress, offline: inbound.offlineAddress } : undefined,
+  });
   const ai = createAiService({ db, shortcuts, apiKey: env.ANTHROPIC_API_KEY, model: env.AI_MODEL, client: opts.aiClient });
 
   // Never send internal details (SQL, stack traces) to clients; log them instead.
@@ -272,7 +299,12 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?:
       });
     });
 
-    r.get('/settings/email', async () => ({ enabled: mailer.enabled, from: mailer.from, replyTo: mailer.replyTo }) satisfies EmailStatus);
+    r.get('/settings/email', async (req) => ({
+      enabled: mailer.enabled,
+      from: mailer.from,
+      replyTo: mailer.replyTo,
+      inbound: { enabled: inbound.enabled && mailer.enabled, supportAddress: inbound.accountAddress(req.agent.acc) },
+    }) satisfies EmailStatus);
 
     r.post('/settings/email/test', async (req, reply) => {
       const [me] = await db.select({ email: users.email }).from(users).where(eq(users.id, req.agent.sub));
@@ -357,6 +389,13 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?:
     };
   });
 
+  await inboundRoutes(app, {
+    inbound,
+    secret: env.RESEND_WEBHOOK_SECRET,
+    redis,
+    fetchEmail: opts.fetchReceivedEmail ?? (env.RESEND_API_KEY ? (id) => fetchReceivedEmail(env.RESEND_API_KEY!, id) : null),
+    devRoute: !!logMailer,
+  });
   await helpPublicRoutes(app, { help, widgetSettings, accountExists: (id) => visitors.accountExists(id), redis, limit: (n, m, w) => limit(n, m, w) });
 
   app.addHook('onClose', async () => {

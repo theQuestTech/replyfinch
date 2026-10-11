@@ -78,6 +78,12 @@ export function createOfflineService(db: Db) {
       return Promise.all(rows.map(dto));
     },
 
+    /** Any account's message (for emails, where the reply address says which message). */
+    async getAny(id: string) {
+      const [row] = await db.select().from(offlineMessages).where(eq(offlineMessages.id, id));
+      return row ?? null;
+    },
+
     async get(accountId: string, id: string) {
       const [row] = await db.select().from(offlineMessages).where(and(eq(offlineMessages.id, id), eq(offlineMessages.accountId, accountId)));
       return row ?? null;

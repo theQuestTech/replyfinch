@@ -122,6 +122,19 @@ export function useRealtime() {
       void queryClient.invalidateQueries({ queryKey: ['ticket', t.id] });
       if (t.visitorId) void queryClient.invalidateQueries({ queryKey: ['customer', t.visitorId] });
     });
+    s.on('ticket:customer-email', ({ ticket, kind, from, preview }) => {
+      void queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      void queryClient.invalidateQueries({ queryKey: ['ticket', ticket.id] });
+      alertAgent({
+        kind: 'ticket',
+        agentStatus: myStatus(),
+        viewingThisChat: false,
+        title: kind === 'reply' ? `${from} replied to ticket #${ticket.number}` : `New ticket #${ticket.number} by email from ${from}`,
+        body: preview,
+        tag: `ticket-email-${ticket.id}`,
+        onClick: () => goTo(`/tickets/${ticket.id}`),
+      });
+    });
     s.on('ticket:assigned', ({ ticket, byName }) =>
       alertAgent({
         kind: 'ticket',

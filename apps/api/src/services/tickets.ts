@@ -1,14 +1,15 @@
 import { and, asc, desc, eq, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
 import type { Ticket, TicketCounts, TicketList, TicketMessage, TicketPriority, TicketStatus, TicketView } from '@replyfinch/shared';
 import type { Db } from '../db/client';
-import { ticketMessages, tickets, users, visitors } from '../db/schema';
+import { accounts, ticketMessages, tickets, users, visitors } from '../db/schema';
 import { newId } from '../ids';
 import { isUniqueViolation } from './conversations';
+import type { OfflineService } from './offline';
 
 type Row = typeof tickets.$inferSelect;
 type MsgRow = typeof ticketMessages.$inferSelect;
 type Author = { id: string | null; name: string };
-type NewMessage = { kind: TicketMessage['kind']; author: Author; body: string; emailedTo?: string | null; createdAt?: Date };
+export type NewMessage = { kind: TicketMessage['kind']; author: Author; body: string; emailedTo?: string | null; createdAt?: Date };
 
 const STATUS_LABEL: Record<TicketStatus, string> = { open: 'Open', pending: 'Pending', solved: 'Solved' };
 const PRIORITY_LABEL: Record<TicketPriority, string> = { low: 'Low', normal: 'Normal', high: 'High', urgent: 'Urgent' };
@@ -96,6 +97,45 @@ export function createTicketService(db: Db) {
     async get(accountId: string, id: string) {
       const [row] = await db.select().from(tickets).where(and(eq(tickets.id, id), eq(tickets.accountId, accountId)));
       return row ?? null;
+    },
+
+    /** Any account's ticket (for emails, where the reply address says which ticket). */
+    async getAny(id: string) {
+      const [row] = await db.select().from(tickets).where(eq(tickets.id, id));
+      return row ?? null;
+    },
+
+    async accountExists(accountId: string) {
+      const [a] = await db.select({ id: accounts.id }).from(accounts).where(eq(accounts.id, accountId));
+      return !!a;
+    },
+
+    async byNumber(accountId: string, number: number) {
+      const [row] = await db.select().from(tickets).where(and(eq(tickets.accountId, accountId), eq(tickets.number, number)));
+      return row ?? null;
+    },
+
+    async bySource(accountId: string, source: Row['source'], sourceId: string) {
+      const [row] = await db
+        .select()
+        .from(tickets)
+        .where(and(eq(tickets.accountId, accountId), eq(tickets.source, source), eq(tickets.sourceId, sourceId)))
+        .orderBy(desc(tickets.createdAt))
+        .limit(1);
+      return row ?? null;
+    },
+
+    /** The customer wrote back (by email): add it to the thread and put the ticket back in the team's court. */
+    async customerReply(row: Row, author: string, body: string) {
+      return db.transaction(async (tx) => {
+        const [m] = await insertMessages(row.accountId, row.id, [{ kind: 'customer', author: { id: null, name: author }, body }], tx);
+        const [updated] = await tx
+          .update(tickets)
+          .set({ status: 'open', solvedAt: null, updatedAt: new Date() })
+          .where(eq(tickets.id, row.id))
+          .returning();
+        return { row: updated!, message: msgDto(m!), reopened: row.status !== 'open' };
+      });
     },
 
     /** An active agent on this account (for assigning). */
@@ -290,3 +330,12 @@ export function createTicketService(db: Db) {
   };
 }
 export type TicketService = ReturnType<typeof createTicketService>;
+
+/** A ticket made from an offline message starts with the customer's message and any emailed answers. */
+export async function offlineThread(offline: OfflineService, m: NonNullable<Awaited<ReturnType<OfflineService['get']>>>): Promise<NewMessage[]> {
+  const msgs: NewMessage[] = [{ kind: 'customer', author: { id: null, name: m.name }, body: m.message, createdAt: m.createdAt }];
+  for (const rep of await offline.replies(m.accountId, m.id)) {
+    msgs.push({ kind: 'reply', author: { id: null, name: rep.authorName }, body: rep.body, emailedTo: rep.to, createdAt: new Date(rep.createdAt) });
+  }
+  return msgs;
+}

@@ -711,6 +711,11 @@ export function createRealtime(d: Deps) {
         agentsNs.to(`agent:${t.assigneeId}`).emit('ticket:assigned', { ticket: t, byName: assignedBy.name });
       }
     },
+    /** A customer emailed: tell the ticket's agent (or everyone, when nobody has it yet). */
+    customerEmail(acc: string, p: Parameters<AgentServerEvents['ticket:customer-email']>[0]) {
+      toAgents(acc).emit('ticket:update', p.ticket);
+      (p.ticket.assigneeId ? agentsNs.to(`agent:${p.ticket.assigneeId}`) : toAgents(acc)).emit('ticket:customer-email', p);
+    },
     /** Push profile edits made over REST to everyone watching. */
     async visitorChanged(acc: string, vid: string, patch: Partial<VisitorRecord>) {
       const r = await d.presence.updateVisitor(acc, vid, (rec) => Object.assign(rec, patch));

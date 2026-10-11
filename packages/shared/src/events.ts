@@ -95,4 +95,6 @@ export interface AgentServerEvents {
   'ticket:update': (t: Ticket) => void;
   /** A teammate assigned a ticket to you. */
   'ticket:assigned': (p: { ticket: Ticket; byName: string }) => void;
+  /** A customer emailed: a reply on a ticket, or a new ticket. */
+  'ticket:customer-email': (p: { ticket: Ticket; kind: 'reply' | 'created'; from: string; preview: string }) => void;
 }

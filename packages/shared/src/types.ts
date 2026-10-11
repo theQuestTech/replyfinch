@@ -293,6 +293,8 @@ export interface EmailStatus {
   enabled: boolean;
   from: string | null;
   replyTo: string | null;
+  /** Receiving email: customers' replies come back into tickets. */
+  inbound?: { enabled: boolean; supportAddress: string | null };
 }
 
 /** Settings → AI assistant (admins). */
@@ -339,7 +341,7 @@ export interface Ticket {
   visitorId: string | null;
   requesterName: string | null;
   requesterEmail: string | null;
-  source: 'manual' | 'chat' | 'offline';
+  source: 'manual' | 'chat' | 'offline' | 'email';
   sourceId: string | null;
   createdByName: string | null;
   createdAt: number;

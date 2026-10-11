@@ -121,7 +121,13 @@ afterAll(async () => {
 describe('email', () => {
   it('reports that email is set up, and tells the widget', async () => {
     const maya = await login('maya@replyfinch.dev');
-    expect((await call('GET', '/settings/email', maya.token)).body).toEqual({ enabled: true, from: 'Acme Books <support@acme.test>', replyTo: null });
+    expect((await call('GET', '/settings/email', maya.token)).body).toEqual({
+      enabled: true,
+      from: 'Acme Books <support@acme.test>',
+      replyTo: null,
+      // No receiving domain here: customers' replies go to the normal reply address.
+      inbound: { enabled: false, supportAddress: null },
+    });
     const v = await visitor();
     expect(v.config.emailTranscripts).toBe(true);
     v.socket.disconnect();

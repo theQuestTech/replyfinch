@@ -15,6 +15,16 @@ const schema = z.object({
   EMAIL_REPLY_TO: z.string().trim().optional(),
   /** Development/tests only: "log" keeps emails in memory (GET /dev/outbox) instead of sending them. */
   EMAIL_TRANSPORT: z.enum(['resend', 'log']).default('resend'),
+  // Receiving email (optional): customers' replies to ticket emails come back into the ticket.
+  /** The domain Resend receives mail for, e.g. "abc123.resend.app" (Resend → Receiving) or a subdomain with Resend's MX record. */
+  INBOUND_DOMAIN: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .transform((d) => d.replace(/^.*@/, '').replace(/^\.+|\.+$/g, ''))
+    .optional(),
+  /** The signing secret ("whsec_…") of the Resend webhook for received emails. */
+  RESEND_WEBHOOK_SECRET: z.string().trim().optional(),
   // AI suggest (optional). Without a key, AI suggest uses free mode (best matching saved reply).
   ANTHROPIC_API_KEY: z.string().trim().optional(),
   AI_MODEL: z.string().trim().default('claude-haiku-5-5'),

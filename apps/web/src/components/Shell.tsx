@@ -40,7 +40,7 @@ const NAV = [
   { to: '/customers', label: 'Customers', icon: Users },
   { to: '/history', label: 'History', icon: History },
   { to: '/reports', label: 'Reports', icon: ChartColumn },
-  { to: '/help-center', label: 'Help center', icon: BookOpen, soon: true },
+  { to: '/help-center', label: 'Help center', icon: BookOpen },
 ];
 
 /** "(3) Replyfinch": waiting chats + unread messages, visible from any browser tab. */
@@ -149,11 +149,10 @@ export function Shell() {
           </div>
           {expanded && <span className="text-[17px] font-bold tracking-tight text-white">Replyfinch</span>}
         </div>
-        {NAV.map(({ to, label, icon: Icon, end, badge, soon }) => (
+        {NAV.map(({ to, label, icon: Icon, end, badge }) => (
           <NavLink key={to} to={to} end={end} title={expanded ? undefined : label} aria-label={label} className={({ isActive }) => item(isActive)}>
             <Icon className="size-5 shrink-0" />
             {expanded && <span className="truncate text-sm font-medium">{label}</span>}
-            {expanded && soon && <span className="ml-auto rounded bg-navy-2 px-1.5 text-[10px] font-semibold text-on-navy">Soon</span>}
             {badge && badges[badge] > 0 && (
               <span
                 className={clsx(

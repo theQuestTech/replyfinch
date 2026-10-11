@@ -83,4 +83,31 @@ input:focus, select:focus, textarea:focus { border-color: var(--primary); box-sh
 .rate-btn:hover { border-color: var(--primary); background: var(--primary-subtle); }
 .footer { display: flex; justify-content: space-between; align-items: center; padding: 4px 10px 8px; background: var(--surface); font-size: 11px; color: var(--text-2); }
 .footer b { color: var(--text); }
+/* Help articles */
+.help { display: flex; flex-direction: column; gap: 6px; }
+.help-search { background: var(--surface); }
+.help-list { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.help-list:empty { display: none; }
+.help-item { text-align: left; border: 0; border-bottom: 1px solid var(--border); background: transparent; padding: 9px 12px; cursor: pointer;
+  color: var(--text); font-size: 13px; font-weight: 600; display: flex; flex-direction: column; gap: 2px; }
+.help-item:last-child { border-bottom: 0; }
+.help-item:hover { background: var(--muted); }
+.help-item small { font-weight: 400; color: var(--text-2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.help-note { padding: 9px 12px; font-size: 12px; color: var(--text-2); }
+.help-or { text-align: center; font-size: 11px; color: var(--text-2); text-transform: uppercase; letter-spacing: .04em; }
+.article { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px 16px; display: flex; flex-direction: column; gap: 12px; }
+.article .rate { border: 0; padding: 0; }
+.back { align-self: flex-start; border: 0; background: transparent; color: var(--text-2); cursor: pointer; padding: 2px 0; font-size: 12px; font-weight: 600; }
+.back:hover { color: var(--text); }
+.article-title { margin: 0; font-size: 17px; line-height: 1.3; }
+.article-body { font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; }
+.article-body > * { margin: 0 0 10px; }
+.article-body > *:last-child { margin-bottom: 0; }
+.article-body h2, .article-body h3, .article-body h4 { font-size: 15px; margin-top: 14px; }
+.article-body ul, .article-body ol { padding-left: 20px; }
+.article-body a { color: var(--primary); }
+.article-body img { max-width: 100%; border-radius: 8px; }
+.article-body code { background: var(--muted); padding: 1px 4px; border-radius: 4px; font-size: 13px; }
+.article-body blockquote { border-left: 3px solid var(--border); padding-left: 10px; color: var(--text-2); }
+.article-body hr { border: 0; border-top: 1px solid var(--border); }
 `;

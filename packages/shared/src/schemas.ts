@@ -84,6 +84,8 @@ export const widgetSettingsSchema = z.object({
   departmentField: z.enum(['shown', 'hidden']),
   ratings: z.boolean(),
   typingPreview: z.boolean(),
+  // Optional: older agent apps (mid-deploy) don't send it.
+  helpSearch: z.boolean().default(true),
 });
 
 export const chatRateSchema = z.object({
@@ -218,3 +220,32 @@ export const ticketsQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).max(100_000).default(0),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
+
+export const helpCategorySchema = z.object({
+  name: z.string().trim().min(1, 'Add a name').max(80),
+  position: z.number().int().min(0).max(10_000).optional(),
+});
+
+const articleTitle = z.string().trim().min(1, 'Add a title').max(200);
+const articleBody = z.string().max(50_000, 'Keep articles under 50,000 characters');
+const articleCategory = z.string().max(64).nullable();
+const articleStatus = z.enum(['draft', 'published']);
+
+export const helpArticleSchema = z.object({
+  title: articleTitle,
+  body: articleBody.default(''),
+  categoryId: articleCategory.default(null),
+  status: articleStatus.default('draft'),
+});
+
+/** Only the fields sent change. */
+export const helpArticlePatchSchema = z.object({
+  title: articleTitle.optional(),
+  body: articleBody.optional(),
+  categoryId: articleCategory.optional(),
+  status: articleStatus.optional(),
+});
+
+export const helpSearchSchema = z.object({ q: z.string().trim().max(200).default('') });
+
+export const helpFeedbackSchema = z.object({ helpful: z.boolean() });

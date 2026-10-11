@@ -33,3 +33,44 @@ body,
 body {
   @apply bg-canvas text-ink font-sans antialiased;
 }
+
+/* Help center articles (rendered from Markdown), in the agent preview and the public help site. */
+.article-body {
+  @apply text-[15px] leading-relaxed text-ink;
+}
+.article-body > * + * {
+  @apply mt-4;
+}
+.article-body h2 {
+  @apply mt-7 text-xl font-bold;
+}
+.article-body h3 {
+  @apply mt-6 text-lg font-bold;
+}
+.article-body h4 {
+  @apply mt-5 text-base font-bold;
+}
+.article-body ul {
+  @apply list-disc pl-6;
+}
+.article-body ol {
+  @apply list-decimal pl-6;
+}
+.article-body li + li {
+  @apply mt-1;
+}
+.article-body a {
+  @apply text-primary underline underline-offset-2;
+}
+.article-body code {
+  @apply rounded bg-muted px-1 py-0.5 text-[0.9em];
+}
+.article-body blockquote {
+  @apply border-l-4 border-line pl-4 text-ink-2;
+}
+.article-body img {
+  @apply max-w-full rounded-lg border border-line;
+}
+.article-body hr {
+  @apply border-line;
+}

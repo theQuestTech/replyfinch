@@ -37,6 +37,8 @@ import { createLogMailer, createMailer, EmailError, type Mailer } from './email'
 import { settingsRoutes } from './routes/settings';
 import { ticketRoutes } from './routes/tickets';
 import { createTicketService } from './services/tickets';
+import { createHelpService } from './services/help';
+import { helpAgentRoutes, helpPublicRoutes } from './routes/help';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -63,6 +65,7 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?:
   const widgetSettings = createWidgetSettingsService(db);
   const reports = createReportService(db);
   const tickets = createTicketService(db);
+  const help = createHelpService(db);
   const customers = createCustomerService(db, history, offline, tickets);
   const logMailer = env.EMAIL_TRANSPORT === 'log' && env.NODE_ENV !== 'production' ? createLogMailer(env.EMAIL_FROM ?? 'Replyfinch <dev@replyfinch.dev>') : null;
   const mailer = opts.mailer ?? logMailer ?? createMailer({ apiKey: env.RESEND_API_KEY, from: env.EMAIL_FROM, replyTo: env.EMAIL_REPLY_TO });
@@ -172,6 +175,7 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?:
   app.register(async (r) => {
     r.addHook('preHandler', requireAgent);
     await settingsRoutes(r, { db, auth, realtime, shortcuts, widgetSettings, ai });
+    await helpAgentRoutes(r, { help });
     await ticketRoutes(r, { db, tickets, conversations, offline, visitors, mail, realtime, replyLimit: limit('ticket-message', 60, 60, (req) => req.agent.sub) });
 
     r.get('/me', async (req) => {
@@ -348,9 +352,12 @@ export async function buildApp(env: Env, opts: { leaveGraceMs?: number; mailer?:
         accountName: account.name,
         agentsOnline: team.filter((t) => t.status === 'online').length,
         emailTranscripts: mailer.enabled,
+        helpArticles: await help.publishedCount(account.id),
       } satisfies WidgetConfig,
     };
   });
+
+  await helpPublicRoutes(app, { help, widgetSettings, accountExists: (id) => visitors.accountExists(id), redis, limit: (n, m, w) => limit(n, m, w) });
 
   app.addHook('onClose', async () => {
     await realtime.close();

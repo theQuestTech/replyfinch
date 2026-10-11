@@ -237,3 +237,44 @@ export const ticketMessages = pgTable(
   },
   (t) => [index('ticket_messages_ticket_idx').on(t.ticketId, t.createdAt)],
 );
+
+/** Help center: groups of articles ("Shipping", "Returns"…). */
+export const helpCategories = pgTable(
+  'help_categories',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull().references(() => accounts.id),
+    name: text('name').notNull(),
+    position: integer('position').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index('help_categories_account_idx').on(t.accountId, t.position)],
+);
+
+/** Help center articles customers read on the public help site and in the chat widget. */
+export const helpArticles = pgTable(
+  'help_articles',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull().references(() => accounts.id),
+    categoryId: text('category_id').references(() => helpCategories.id, { onDelete: 'set null' }),
+    title: text('title').notNull(),
+    /** The address part: /help/<account>/<slug>. Fixed once published, so shared links keep working. */
+    slug: text('slug').notNull(),
+    /** Simple Markdown. */
+    body: text('body').notNull().default(''),
+    status: text('status', { enum: ['draft', 'published'] }).notNull().default('draft'),
+    views: integer('views').notNull().default(0),
+    helpful: integer('helpful').notNull().default(0),
+    notHelpful: integer('not_helpful').notNull().default(0),
+    createdBy: text('created_by').references(() => users.id),
+    updatedBy: text('updated_by').references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('help_articles_account_slug_idx').on(t.accountId, t.slug),
+    index('help_articles_account_status_idx').on(t.accountId, t.status),
+  ],
+);

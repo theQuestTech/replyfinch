@@ -14,4 +14,6 @@ export const newId = {
   offlineReply: () => `or_${ulid()}`,
   ticket: () => `tk_${ulid()}`,
   ticketMessage: () => `tm_${ulid()}`,
+  helpCategory: () => `hc_${ulid()}`,
+  helpArticle: () => `ha_${ulid()}`,
 };

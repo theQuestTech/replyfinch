@@ -166,6 +166,20 @@ function WidgetForm({ initial }: { initial: Settings }) {
           </Card>
 
           <Card className="flex flex-col gap-4 p-6">
+            <h3 className="text-base font-bold">Before the chat</h3>
+            <label className="flex cursor-pointer items-start gap-3">
+              <input type="checkbox" className="mt-1 size-4 accent-primary" checked={s.helpSearch} onChange={(e) => set({ helpSearch: e.target.checked })} />
+              <span>
+                <span className="block text-sm font-semibold">Let visitors search your help articles</span>
+                <span className="block text-xs text-ink-2">
+                  The widget shows a search box and your most-read articles above the form, so customers can find answers without
+                  waiting. Only shown once you’ve published articles in the Help center.
+                </span>
+              </span>
+            </label>
+          </Card>
+
+          <Card className="flex flex-col gap-4 p-6">
             <h3 className="text-base font-bold">During the chat</h3>
             <label className="flex cursor-pointer items-start gap-3">
               <input

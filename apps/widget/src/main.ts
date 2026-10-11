@@ -3,7 +3,15 @@
 import { io, type Socket } from 'socket.io-client';
 // Import shared code by subpath so the validation library (zod) stays out of the bundle.
 import { HEARTBEAT_INTERVAL_MS } from '@replyfinch/shared/visitor-state';
-import { DEFAULT_WIDGET_SETTINGS, type Conversation, type Message, type WidgetConfig } from '@replyfinch/shared/types';
+import {
+  DEFAULT_WIDGET_SETTINGS,
+  type Conversation,
+  type Message,
+  type PublicHelpArticle,
+  type PublicHelpArticleSummary,
+  type WidgetConfig,
+} from '@replyfinch/shared/types';
+import { renderMarkdown } from '@replyfinch/shared/markdown';
 import type { VisitorClientEvents, VisitorServerEvents } from '@replyfinch/shared/events';
 import { styles } from './styles';
 
@@ -106,6 +114,10 @@ class ReplyfinchWidget {
   private transcript: { conversationId: string; open: boolean; sentTo: string | null } | null = null;
   /** Set after a message was left: { name, email } for the thank-you note. */
   private offlineSent: { name: string; email: string } | null = null;
+  /** Help article search above the forms: what's typed, its results, and the most-read articles. */
+  private help = { raw: '', q: '', results: null as PublicHelpArticleSummary[] | null, popular: null as PublicHelpArticleSummary[] | null, timer: 0, seq: 0 };
+  /** An article being read in the widget. */
+  private article: { slug: string; data: PublicHelpArticle | null; failed: boolean; vote: boolean | null } | null = null;
 
   constructor(
     private accountId: string,
@@ -165,6 +177,7 @@ class ReplyfinchWidget {
     });
     socket.on('chat:resume', ({ conversation, messages, proactive }) => {
       if (this.conversation?.id !== conversation.id) this.resetTyping();
+      this.article = null;
       this.conversation = conversation;
       this.messages = messages;
       this.formDirty = false;
@@ -353,7 +366,9 @@ class ReplyfinchWidget {
     this.launcher.setAttribute('aria-expanded', String(this.open));
     if (this.open) {
       this.setUnread(0);
-      this.scrollDown(true);
+      // A chat opens at its latest message; the start screen (help search, form) at the top.
+      if (this.conversation) this.scrollDown(true);
+      else this.body.scrollTop = 0;
       if (opts.focus !== false) (this.root.querySelector('textarea, input') as HTMLElement | null)?.focus();
     } else if (!this.isPopup && this.root.activeElement) {
       this.launcher.focus(); // keyboard users land back on the bubble
@@ -384,6 +399,7 @@ class ReplyfinchWidget {
     }
     const nearBottom = this.body.scrollHeight - this.body.scrollTop - this.body.clientHeight < 80;
     const scrollTop = this.body.scrollTop;
+    const wasChat = !!this.body.querySelector('.msg');
     this.renderInner();
     for (const f of this.root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('[data-keep]')) {
       const k = kept.get(f.dataset.keep!);
@@ -395,7 +411,8 @@ class ReplyfinchWidget {
         if (k.start !== null) f.setSelectionRange(k.start, k.end ?? k.start);
       }
     }
-    if (nearBottom) this.scrollDown();
+    // A chat that just started (from the form) opens at its latest message too.
+    if (this.conversation && (nearBottom || !wasChat)) this.scrollDown();
     else this.body.scrollTop = scrollTop;
   }
 
@@ -403,7 +420,10 @@ class ReplyfinchWidget {
     this.body.innerHTML = '';
     this.composer.innerHTML = '';
     if (this.popup && !this.popup.closed) return this.renderPoppedOut();
-    if (!this.conversation) return this.agentsOnline ? this.renderPrechat() : this.renderOffline();
+    if (!this.conversation) {
+      if (this.article) return this.renderArticle();
+      return this.agentsOnline ? this.renderPrechat() : this.renderOffline();
+    }
     for (const m of this.messages) this.body.append(this.messageEl(m));
     for (const m of this.pending.values()) this.body.append(this.messageEl(m, true));
     this.renderTyping();
@@ -430,6 +450,7 @@ class ReplyfinchWidget {
 
   private renderPrechat() {
     this.typingEl.textContent = '';
+    this.renderHelp(true);
     const f = el('form', { class: 'prechat' }) as HTMLFormElement;
     const cfg = this.config;
     f.append(el('div', { class: 'intro' }, escapeHtml(cfg?.greeting ?? '')));
@@ -505,6 +526,7 @@ class ReplyfinchWidget {
       this.body.append(box);
       return;
     }
+    this.renderHelp(false);
     const f = el('form', { class: 'prechat', 'data-rf': 'offline' }) as HTMLFormElement;
     f.append(el('div', { class: 'intro' }, escapeHtml(this.config?.offlineGreeting ?? '')));
     const name = el('input', { name: 'name', required: '', placeholder: 'Your name', autocomplete: 'name' }) as HTMLInputElement;
@@ -811,6 +833,160 @@ class ReplyfinchWidget {
     if (on === this.isTyping) return;
     this.isTyping = on;
     this.socket.emit('typing', { conversationId: this.conversation.id, isTyping: on });
+  }
+
+  // ------------------------------------------------------------- help articles
+  private get helpOn() {
+    return !!this.config?.helpSearch && (this.config.helpArticles ?? 0) > 0;
+  }
+
+  private helpFetch<T>(path: string): Promise<T> {
+    return fetch(`${this.api}/widget/help/${encodeURIComponent(this.accountId)}${path}`).then((r) => {
+      if (!r.ok) throw new Error(`help ${r.status}`);
+      return r.json() as Promise<T>;
+    });
+  }
+
+  /** "Search for answers…" plus the most-read articles, above the chat / message form. */
+  private renderHelp(online: boolean) {
+    if (!this.helpOn) return;
+    const box = el('div', { class: 'help', 'data-rf': 'help' });
+    const input = el('input', {
+      type: 'search',
+      class: 'help-search',
+      placeholder: 'Search for answers…',
+      'aria-label': 'Search help articles',
+      'data-keep': 'help-q',
+      autocomplete: 'off',
+    }) as HTMLInputElement;
+    input.value = this.help.raw; // still there after reading an article
+    input.addEventListener('input', () => this.searchHelp(input.value));
+    const list = el('div', { class: 'help-list', 'data-rf': 'help-list' });
+    box.append(input, list);
+    this.body.append(box, el('div', { class: 'help-or' }, online ? 'or chat with us' : 'or leave us a message'));
+    this.renderHelpList(list);
+    if (this.help.popular === null) {
+      this.help.popular = [];
+      this.helpFetch<PublicHelpArticleSummary[]>('/search?q=')
+        .then((r) => {
+          this.help.popular = r;
+          this.renderHelpList();
+        })
+        .catch(() => {});
+    }
+  }
+
+  private searchHelp(value: string) {
+    this.help.raw = value;
+    this.help.q = value.trim();
+    window.clearTimeout(this.help.timer);
+    const seq = ++this.help.seq;
+    if (this.help.q.length < 2) {
+      this.help.results = null;
+      return this.renderHelpList();
+    }
+    this.help.timer = window.setTimeout(() => {
+      this.helpFetch<PublicHelpArticleSummary[]>(`/search?q=${encodeURIComponent(this.help.q)}`)
+        .then((r) => {
+          if (seq !== this.help.seq) return; // a newer search is on its way
+          this.help.results = r;
+          this.renderHelpList();
+        })
+        .catch(() => {});
+    }, 250);
+  }
+
+  private renderHelpList(list = this.root.querySelector<HTMLElement>('[data-rf=help-list]')) {
+    if (!list) return;
+    list.innerHTML = '';
+    const searching = this.help.q.length >= 2;
+    const items = searching ? this.help.results : (this.help.popular ?? []).slice(0, 3);
+    if (searching && items === null) return list.append(el('div', { class: 'help-note' }, 'Searching…'));
+    if (searching && !items?.length) return list.append(el('div', { class: 'help-note' }, 'No articles match — ask us below.'));
+    for (const a of items ?? []) {
+      const b = el('button', { class: 'help-item', type: 'button' });
+      b.append(el('span', {}, escapeHtml(a.title)));
+      if (searching && a.excerpt) b.append(el('small', {}, escapeHtml(a.excerpt)));
+      b.addEventListener('click', () => this.openArticle(a.slug));
+      list.append(b);
+    }
+  }
+
+  private openArticle(slug: string) {
+    this.article = { slug, data: null, failed: false, vote: null };
+    this.render();
+    this.body.scrollTop = 0;
+    this.helpFetch<PublicHelpArticle>(`/articles/${encodeURIComponent(slug)}`)
+      .then((a) => {
+        if (this.article?.slug !== slug) return;
+        this.article.data = a;
+        this.render();
+        this.body.scrollTop = 0;
+      })
+      .catch(() => {
+        if (this.article?.slug !== slug) return;
+        this.article.failed = true;
+        this.render();
+      });
+  }
+
+  private renderArticle() {
+    this.typingEl.textContent = '';
+    const a = this.article!;
+    const box = el('div', { class: 'article', 'data-rf': 'article' });
+    const back = el('button', { class: 'back', type: 'button' }, '‹ Back');
+    const close = () => {
+      this.article = null;
+      this.render();
+    };
+    back.addEventListener('click', close);
+    box.append(back);
+    if (a.failed) box.append(el('div', { class: 'help-note' }, 'Couldn’t load this article.'));
+    else if (!a.data) box.append(el('div', { class: 'help-note' }, 'Loading…'));
+    else {
+      box.append(el('h2', { class: 'article-title' }, escapeHtml(a.data.title)));
+      // Safe: renderMarkdown escapes the article text and only emits its own tags.
+      box.append(el('div', { class: 'article-body' }, renderMarkdown(a.data.body)));
+      const vote = el('div', { class: 'rate', 'data-rf': 'article-vote' });
+      if (a.vote === null) {
+        vote.append(el('div', { class: 'rate-title' }, 'Was this helpful?'));
+        const row = el('div', { class: 'rate-row' });
+        for (const [helpful, label] of [
+          [true, 'Yes'],
+          [false, 'No'],
+        ] as const) {
+          const b = el('button', { class: 'rate-btn', type: 'button' }, label);
+          b.addEventListener('click', () => {
+            a.vote = helpful;
+            void fetch(`${this.api}/widget/help/${encodeURIComponent(this.accountId)}/articles/${encodeURIComponent(a.slug)}/feedback`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ helpful }),
+            }).catch(() => {});
+            this.render();
+          });
+          row.append(b);
+        }
+        vote.append(row);
+      } else {
+        vote.append(el('div', { class: 'rate-title' }, a.vote ? 'Glad it helped!' : 'Sorry about that — we’re happy to help below.'));
+      }
+      box.append(vote);
+      if (a.data.related.length) {
+        const rel = el('div', { class: 'help-list' });
+        for (const r of a.data.related.slice(0, 3)) {
+          const b = el('button', { class: 'help-item', type: 'button' });
+          b.append(el('span', {}, escapeHtml(r.title)));
+          b.addEventListener('click', () => this.openArticle(r.slug));
+          rel.append(b);
+        }
+        box.append(el('div', { class: 'help-or' }, 'Related'), rel);
+      }
+    }
+    const cta = el('button', { class: 'btn', type: 'button' }, this.agentsOnline ? 'Chat with us' : 'Leave us a message');
+    cta.addEventListener('click', close);
+    box.append(cta);
+    this.body.append(box);
   }
 
   private scrollDown(_force = false) {

@@ -124,6 +124,8 @@ export interface WidgetSettings {
   ratings: boolean;
   /** Agents see what a visitor is typing before they send it ("sneak peek"). */
   typingPreview: boolean;
+  /** Let visitors search published help articles in the widget before they chat. */
+  helpSearch: boolean;
 }
 
 export const DEFAULT_WIDGET_SETTINGS: WidgetSettings = {
@@ -137,6 +139,7 @@ export const DEFAULT_WIDGET_SETTINGS: WidgetSettings = {
   emailField: 'optional',
   ratings: true,
   typingPreview: true,
+  helpSearch: true,
 };
 
 export interface WidgetConfig extends WidgetSettings {
@@ -144,6 +147,8 @@ export interface WidgetConfig extends WidgetSettings {
   agentsOnline: number;
   /** Email is set up, so visitors can ask for a copy of their chat. */
   emailTranscripts?: boolean;
+  /** Published help articles (the widget offers article search when there are some). */
+  helpArticles?: number;
 }
 
 /** A saved reply. Agents insert it in the composer with "/name". */
@@ -360,3 +365,56 @@ export interface TicketList {
 
 /** Ticket counts for each view in the sidebar. */
 export type TicketCounts = Record<TicketView, number>;
+
+export interface HelpCategory {
+  id: string;
+  name: string;
+  position: number;
+  /** All articles, drafts included (agent side). */
+  articles: number;
+}
+
+/** An article as agents see it in the Help center list. */
+export interface HelpArticleSummary {
+  id: string;
+  title: string;
+  slug: string;
+  categoryId: string | null;
+  status: 'draft' | 'published';
+  views: number;
+  helpful: number;
+  notHelpful: number;
+  updatedAt: number;
+  updatedByName: string | null;
+  publishedAt: number | null;
+}
+
+export interface HelpArticle extends HelpArticleSummary {
+  body: string;
+}
+
+/** What customers see: published articles only. */
+export interface PublicHelpArticleSummary {
+  slug: string;
+  title: string;
+  /** The first words of the article, as plain text. */
+  excerpt: string;
+  categoryName: string | null;
+}
+
+export interface PublicHelpArticle {
+  slug: string;
+  title: string;
+  /** Simple Markdown; render with renderMarkdown from @replyfinch/shared/markdown. */
+  body: string;
+  categoryName: string | null;
+  updatedAt: number;
+  related: PublicHelpArticleSummary[];
+}
+
+export interface PublicHelpCenter {
+  accountName: string;
+  color: string | null;
+  categories: { id: string | null; name: string; articles: PublicHelpArticleSummary[] }[];
+  popular: PublicHelpArticleSummary[];
+}

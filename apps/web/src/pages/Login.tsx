@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { Bird } from 'lucide-react';
 import type { Agent } from '@replyfinch/shared';
 import { api, ApiError } from '../lib/api';
@@ -62,7 +62,12 @@ export function Login() {
           />
         </label>
         <label className="flex flex-col gap-1 text-xs font-semibold text-ink-2">
-          Password
+          <span className="flex items-center justify-between">
+            Password
+            <Link to="/forgot-password" className="font-medium text-primary hover:underline">
+              Forgot password?
+            </Link>
+          </span>
           <input
             type="password"
             required

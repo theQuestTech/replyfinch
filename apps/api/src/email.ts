@@ -219,3 +219,41 @@ export interface ReceivedEmail {
   authentication?: { spf?: string; dkim?: string; dmarc?: string } | null;
   attachments?: { filename: string | null }[] | null;
 }
+
+const button = (href: string, label: string) =>
+  `<p style="margin:24px 0"><a href="${esc(href)}" style="display:inline-block;background:#2F5BEA;color:#fff;text-decoration:none;font-weight:600;padding:12px 20px;border-radius:10px">${esc(label)}</a></p>`;
+
+/** "Forgot password": a one-hour link. */
+export function passwordResetEmail(p: { name: string; link: string }): Omit<OutgoingEmail, 'to'> {
+  const first = p.name.split(' ')[0] || p.name;
+  return {
+    subject: 'Reset your Replyfinch password',
+    text: `Hi ${first},\n\nSomeone (hopefully you) asked to reset your Replyfinch password. Choose a new one here — the link works for 1 hour:\n\n${p.link}\n\nIf it wasn’t you, ignore this email; your password stays the same.`,
+    html: layout(
+      'Replyfinch',
+      '#14213D',
+      `<p style="margin:0">Hi ${esc(first)},</p>
+<p>Someone (hopefully you) asked to reset your Replyfinch password. Choose a new one — the link works for 1 hour.</p>
+${button(p.link, 'Choose a new password')}
+<p style="color:#5b6475;font-size:13px">If it wasn’t you, ignore this email; your password stays the same.</p>`,
+    ),
+  };
+}
+
+/** A new account is ready: set a password to sign in. */
+export function welcomeEmail(p: { name: string; accountName: string; link: string }): Omit<OutgoingEmail, 'to'> {
+  const first = p.name.split(' ')[0] || p.name;
+  return {
+    subject: `Your Replyfinch account for ${p.accountName} is ready`,
+    text: `Hi ${first},\n\nWelcome to Replyfinch! Your account for ${p.accountName} is ready. Choose a password to sign in — the link works for 7 days:\n\n${p.link}\n\nThen add the chat to your website from Settings → Chat widget, and invite your team from Settings → Team.\n\nQuestions? Just reply to this email.`,
+    html: layout(
+      'Replyfinch',
+      '#14213D',
+      `<p style="margin:0">Hi ${esc(first)},</p>
+<p>Welcome to Replyfinch! Your account for <b>${esc(p.accountName)}</b> is ready. Choose a password to sign in — the link works for 7 days.</p>
+${button(p.link, 'Set my password')}
+<p>Then add the chat to your website from <b>Settings → Chat widget</b>, and invite your team from <b>Settings → Team</b>.</p>
+<p style="color:#5b6475;font-size:13px">Questions? Just reply to this email.</p>`,
+    ),
+  };
+}

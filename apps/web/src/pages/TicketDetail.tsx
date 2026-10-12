@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Inbox, Lock, Mail, MessageCircle, Pencil, Send, User } from 'lucide-react';
+import { ArrowLeft, Building2, Inbox, Lock, Mail, MessageCircle, Pencil, Send, User } from 'lucide-react';
 import type { Conversation, Message, Ticket, TicketMessage, TicketPriority, TicketStatus } from '@replyfinch/shared';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -13,6 +13,7 @@ import { dateTime, initials, timeAgo } from '../lib/format';
 import { PRIORITY, STATUS } from '../lib/tickets';
 import { Avatar, Button, Card, Modal, Pill, SectionLabel, inputClass } from '../components/ui';
 import { Transcript } from '../components/chat/Transcript';
+import { NewAccountModal } from '../components/accounts/NewAccountModal';
 
 type Detail = { ticket: Ticket; messages: TicketMessage[] };
 type Patch = { subject?: string; status?: TicketStatus; priority?: TicketPriority; assigneeId?: string | null };
@@ -44,6 +45,8 @@ export function TicketDetail() {
         <span className="text-[22px] font-semibold text-ink-2 tabular-nums">#{t.number}</span>
         <Subject key={t.subject} value={t.subject} onSave={(subject) => update.mutate({ subject })} />
         <Pill tone={STATUS[t.status].tone}>{STATUS[t.status].label}</Pill>
+        <div className="flex-1" />
+        <CreateAccountButton ticket={t} />
       </div>
 
       <div className="flex min-h-0 flex-1 items-start gap-5">
@@ -396,5 +399,27 @@ function Composer({ ticket }: { ticket: Ticket }) {
         </Button>
       </div>
     </div>
+  );
+}
+
+/** Platform admins: turn an early-access request into a customer account. */
+function CreateAccountButton({ ticket }: { ticket: Ticket }) {
+  const isPlatformAdmin = useAuth((s) => !!s.agent?.platformAdmin);
+  const [open, setOpen] = useState(false);
+  const company = /^Early access:\s*(.+)$/.exec(ticket.subject)?.[1];
+  if (!isPlatformAdmin || ticket.source !== 'website' || !company) return null;
+  return (
+    <>
+      <Button variant="primary" onClick={() => setOpen(true)}>
+        <Building2 className="size-4" /> Create their account
+      </Button>
+      {open && (
+        <NewAccountModal
+          ticketId={ticket.id}
+          defaults={{ company: company === ticket.requesterName ? '' : company, name: ticket.requesterName, email: ticket.requesterEmail }}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
   );
 }

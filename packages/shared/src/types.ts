@@ -83,6 +83,8 @@ export interface Agent {
   name: string;
   email: string;
   role: 'admin' | 'agent';
+  /** Runs the Replyfinch service itself: can create customer accounts. */
+  platformAdmin?: boolean;
 }
 
 export interface TeamMember extends Agent {
@@ -514,4 +516,31 @@ export interface ApiKey {
   createdAt: number;
   lastUsedAt: number | null;
   createdByName: string | null;
+}
+
+/** A customer workspace, on the platform admin's Accounts page. */
+export interface PlatformAccount {
+  id: string;
+  name: string;
+  createdAt: number;
+  users: number;
+  admins: { id: string; name: string; email: string; passwordSet: boolean }[];
+  chats30d: number;
+  lastActivityAt: number | null;
+}
+
+export interface PlatformAccountCreated {
+  account: { id: string; name: string };
+  admin: { id: string; name: string; email: string };
+  /** The "set your password" link (also emailed when email works). */
+  setPasswordUrl: string;
+  emailed: boolean;
+}
+
+/** What a password link is for, shown before choosing the password. */
+export interface PasswordLinkInfo {
+  purpose: 'reset' | 'welcome';
+  name: string;
+  email: string;
+  accountName: string;
 }

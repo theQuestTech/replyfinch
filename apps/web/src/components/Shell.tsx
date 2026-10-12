@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import {
   BookOpen,
+  Building2,
   Bird,
   ChartColumn,
   ChevronDown,
@@ -117,6 +118,7 @@ export function Shell() {
     api<Agent>('/me').then(setAgent).catch(() => {});
   }, [setAgent]);
   const active = useDesk((s) => s.active);
+  const isPlatformAdmin = useAuth((s) => !!s.agent?.platformAdmin);
   const waiting = useDesk((s) => Object.values(s.conversations).filter((c) => c.status === 'waiting').length);
   const { data: offlineNew = 0 } = useOfflineCount();
   // Tickets waiting on me.
@@ -149,7 +151,7 @@ export function Shell() {
           </div>
           {expanded && <span className="text-[17px] font-bold tracking-tight text-white">Replyfinch</span>}
         </div>
-        {NAV.map(({ to, label, icon: Icon, end, badge }) => (
+        {[...NAV, ...(isPlatformAdmin ? [{ to: '/accounts', label: 'Accounts', icon: Building2 }] : [])].map(({ to, label, icon: Icon, end, badge }: (typeof NAV)[number]) => (
           <NavLink key={to} to={to} end={end} title={expanded ? undefined : label} aria-label={label} className={({ isActive }) => item(isActive)}>
             <Icon className="size-5 shrink-0" />
             {expanded && <span className="truncate text-sm font-medium">{label}</span>}

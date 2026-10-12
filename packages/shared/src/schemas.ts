@@ -308,3 +308,15 @@ export const apiTicketCreateSchema = z.object({
   email: z.union([z.email(), z.literal('')]).optional(),
   priority: z.enum(['low', 'normal', 'high', 'urgent']).default('normal'),
 });
+
+export const forgotPasswordSchema = z.object({ email: z.email() });
+
+export const resetPasswordSchema = z.object({ token: z.string().min(20).max(200), password });
+
+export const platformAccountSchema = z.object({
+  company: z.string().trim().min(1, 'Add the company name').max(120),
+  name: z.string().trim().min(1, 'Add their name').max(120),
+  email: z.email('Please check the email address').transform((e) => e.toLowerCase()),
+  /** Made from an early-access ticket: leave a note on it. */
+  ticketId: z.string().max(64).optional(),
+});

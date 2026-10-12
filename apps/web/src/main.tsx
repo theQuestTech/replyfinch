@@ -9,6 +9,8 @@ import { queryClient } from './lib/query';
 import { Shell } from './components/Shell';
 import { Home } from './pages/Home';
 import { Login } from './pages/Login';
+import { ForgotPassword, ResetPassword } from './pages/PasswordPages';
+import { Accounts } from './pages/Accounts';
 import { Visitors } from './pages/Visitors';
 import { History } from './pages/History';
 import { Inbox } from './pages/Inbox';
@@ -54,6 +56,8 @@ createRoot(document.getElementById('root')!).render(
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           {/* The public help site: anyone can read it, no sign-in. */}
           <Route path="/help/:acc" element={<PublicHelpHome />} />
           <Route path="/help/:acc/:slug" element={<PublicHelpArticlePage />} />
@@ -74,6 +78,7 @@ createRoot(document.getElementById('root')!).render(
             <Route path="tickets" element={<Tickets />} />
             <Route path="tickets/:id" element={<TicketDetail />} />
             <Route path="help-center" element={<HelpCenter />} />
+            <Route path="accounts" element={<Accounts />} />
             <Route path="help-center/articles/:id" element={<HelpArticleEditor />} />
             <Route path="settings" element={<SettingsLayout />}>
               <Route index element={<Navigate to="profile" replace />} />

@@ -351,3 +351,20 @@ export const apiKeys = pgTable(
   },
   (t) => [uniqueIndex('api_keys_hash_idx').on(t.hash), index('api_keys_account_idx').on(t.accountId)],
 );
+
+/** One-time links to set a password: "forgot password" (1 hour) and new-account welcomes (7 days). Only a hash is stored. */
+export const passwordTokens = pgTable(
+  'password_tokens',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    purpose: text('purpose', { enum: ['reset', 'welcome'] }).notNull(),
+    hash: text('hash').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex('password_tokens_hash_idx').on(t.hash), index('password_tokens_user_idx').on(t.userId)],
+);

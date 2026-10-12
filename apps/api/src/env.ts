@@ -25,6 +25,12 @@ const schema = z.object({
     .optional(),
   /** The signing secret ("whsec_…") of the Resend webhook for received emails. */
   RESEND_WEBHOOK_SECRET: z.string().trim().optional(),
+  /** The first admin (production). Also a platform admin unless PLATFORM_ADMIN_EMAILS says otherwise. */
+  ADMIN_EMAIL: z.string().trim().toLowerCase().optional(),
+  /** Who may create customer accounts (Accounts page): comma-separated emails. */
+  PLATFORM_ADMIN_EMAILS: z.string().optional(),
+  /** The agent app's address, for links in emails. Defaults to the address the request came from. */
+  APP_URL: z.string().trim().optional(),
   /** The account that receives "Request early access" forms from the Replyfinch website, as tickets. */
   SITE_LEADS_ACCOUNT_ID: z.string().trim().optional(),
   // AI suggest (optional). Without a key, AI suggest uses free mode (best matching saved reply).
@@ -41,7 +47,18 @@ if (parsed.NODE_ENV === 'production' && parsed.JWT_SECRET === 'dev-only-secret-c
 export const env = {
   ...parsed,
   corsOrigins: parseOrigins(parsed.CORS_ORIGINS),
+  platformAdmins: platformAdmins(parsed),
 };
+
+function platformAdmins(p: { PLATFORM_ADMIN_EMAILS?: string; ADMIN_EMAIL?: string; NODE_ENV: string }): string[] {
+  const list = (p.PLATFORM_ADMIN_EMAILS ?? '')
+    .split(/[\s,]+/)
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  if (list.length) return list;
+  if (p.ADMIN_EMAIL) return [p.ADMIN_EMAIL];
+  return p.NODE_ENV === 'production' ? [] : ['maya@replyfinch.dev'];
+}
 export type Env = typeof env;
 
 /**

@@ -20,4 +20,5 @@ export const newId = {
   webhookDelivery: () => `whd_${ulid()}`,
   event: () => `evt_${ulid()}`,
   apiKey: () => `key_${ulid()}`,
+  passwordToken: () => `pt_${ulid()}`,
 };

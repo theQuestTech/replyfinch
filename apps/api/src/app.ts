@@ -41,6 +41,8 @@ import { createWebhookService } from './services/webhooks';
 import { createApiKeyService } from './services/api-keys';
 import { integrationRoutes, publicApiRoutes } from './routes/integrations';
 import { inboundRoutes } from './routes/inbound';
+import { passwordRoutes, platformRoutes } from './routes/accounts';
+import { createAccountService } from './services/accounts';
 import { settingsRoutes } from './routes/settings';
 import { ticketRoutes } from './routes/tickets';
 import { createTicketService } from './services/tickets';
@@ -79,6 +81,7 @@ export async function buildApp(
   const webhooks = createWebhookService({ db, allowPrivate: env.NODE_ENV !== 'production', retryDelaysMs: opts.webhookRetryDelaysMs });
   const stopWebhooks = webhooks.start();
   const apiKeys = createApiKeyService(db);
+  const accountsSvc = createAccountService(db);
   const conversations = createConversationService(db, webhooks.bus);
   const visitors = createVisitorService(db);
   const stats = createStatsService(db, presence);
@@ -205,9 +208,11 @@ export async function buildApp(
     if (!u.active || !(await checkPassword(body.data.password, u.passwordHash))) {
       return reply.code(401).send({ error: 'invalid_credentials' });
     }
-    const agent: Agent = { id: u.id, accountId: u.accountId, name: u.name, email: u.email, role: u.role };
+    const agent: Agent = { id: u.id, accountId: u.accountId, name: u.name, email: u.email, role: u.role, platformAdmin: env.platformAdmins.includes(u.email) };
     return { token: auth.signAgent({ sub: u.id, acc: u.accountId, name: u.name }), agent };
   });
+
+  await passwordRoutes(app, { db, env, auth, accounts: accountsSvc, mailer, limit });
 
   // ---------------- agent API ----------------
   app.register(async (r) => {
@@ -215,11 +220,26 @@ export async function buildApp(
     await settingsRoutes(r, { db, auth, realtime, shortcuts, widgetSettings, ai });
     await helpAgentRoutes(r, { help });
     await integrationRoutes(r, { db, webhooks, apiKeys });
+    await platformRoutes(r, {
+      db,
+      env,
+      auth,
+      accounts: accountsSvc,
+      mailer,
+      limit,
+      tickets,
+      conversations,
+      onTicketNote: (acc, id) =>
+        void tickets
+          .get(acc, id)
+          .then(async (row) => row && realtime.ticketChanged(acc, await tickets.dto(row)))
+          .catch(() => {}),
+    });
     await ticketRoutes(r, { db, tickets, conversations, offline, visitors, mail, realtime, replyLimit: limit('ticket-message', 60, 60, (req) => req.agent.sub) });
 
     r.get('/me', async (req) => {
       const [u] = await db.select().from(users).where(eq(users.id, req.agent.sub));
-      return { id: u!.id, accountId: u!.accountId, name: u!.name, email: u!.email, role: u!.role } satisfies Agent;
+      return { id: u!.id, accountId: u!.accountId, name: u!.name, email: u!.email, role: u!.role, platformAdmin: env.platformAdmins.includes(u!.email) } satisfies Agent;
     });
 
     r.get('/visitors', async (req) => (await presence.listVisitors(req.agent.acc)).map((v) => toLiveVisitor(v)));

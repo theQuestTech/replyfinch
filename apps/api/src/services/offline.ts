@@ -3,10 +3,11 @@ import type { OfflineMessage, OfflineReply } from '@replyfinch/shared';
 import type { Db } from '../db/client';
 import { offlineMessages, offlineReplies, users, visitors } from '../db/schema';
 import { newId } from '../ids';
+import { noEvents, type EventBus } from './webhooks';
 
 type Row = typeof offlineMessages.$inferSelect;
 
-export function createOfflineService(db: Db) {
+export function createOfflineService(db: Db, bus: EventBus = noEvents) {
   async function dto(r: Row): Promise<OfflineMessage> {
     const handler = r.handledBy
       ? (await db.select({ name: users.name }).from(users).where(eq(users.id, r.handledBy)))[0]
@@ -55,7 +56,9 @@ export function createOfflineService(db: Db) {
           pageUrl: input.pageUrl || null,
         })
         .returning();
-      return dto(row!);
+      const message = await dto(row!);
+      bus.emit(accountId, 'offline_message.created', async () => ({ offlineMessage: message }));
+      return message;
     },
 
     async list(accountId: string, status?: 'new' | 'handled') {

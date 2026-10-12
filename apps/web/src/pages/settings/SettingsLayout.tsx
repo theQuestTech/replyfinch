@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import { NavLink, Outlet } from 'react-router-dom';
-import { Code, Mail, MessageSquareText, Sparkles, UserRound, Users } from 'lucide-react';
+import { Code, Mail, MessageSquareText, Plug, Sparkles, UserRound, Users } from 'lucide-react';
 import { useAuth } from '../../lib/auth';
 
 export function SettingsLayout() {
@@ -12,6 +12,7 @@ export function SettingsLayout() {
     { to: '/settings/widget', label: 'Chat widget', icon: Code, show: true },
     { to: '/settings/email', label: 'Email', icon: Mail, show: true },
     { to: '/settings/ai', label: 'AI assistant', icon: Sparkles, show: true },
+    { to: '/settings/integrations', label: 'Integrations', icon: Plug, show: isAdmin },
   ];
   return (
     <div className="flex min-h-full flex-col gap-6 px-8 py-7">

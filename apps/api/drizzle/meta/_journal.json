@@ -99,6 +99,13 @@
       "when": 1791744329015,
       "tag": "0013_help_center",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791805241086,
+      "tag": "0014_integrations",
+      "breakpoints": true
     }
   ]
 }

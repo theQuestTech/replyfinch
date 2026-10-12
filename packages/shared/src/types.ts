@@ -341,7 +341,7 @@ export interface Ticket {
   visitorId: string | null;
   requesterName: string | null;
   requesterEmail: string | null;
-  source: 'manual' | 'chat' | 'offline' | 'email' | 'website';
+  source: 'manual' | 'chat' | 'offline' | 'email' | 'website' | 'api';
   sourceId: string | null;
   createdByName: string | null;
   createdAt: number;
@@ -419,4 +419,99 @@ export interface PublicHelpCenter {
   color: string | null;
   categories: { id: string | null; name: string; articles: PublicHelpArticleSummary[] }[];
   popular: PublicHelpArticleSummary[];
+}
+
+// ---------------------------------------------------------------- integrations (public API)
+
+export const WEBHOOK_EVENTS = [
+  'chat.started',
+  'chat.ended',
+  'chat.rated',
+  'offline_message.created',
+  'ticket.created',
+  'ticket.status_changed',
+  'ticket.customer_replied',
+] as const;
+export type WebhookEventType = (typeof WEBHOOK_EVENTS)[number];
+
+export const WEBHOOK_EVENT_LABELS: Record<WebhookEventType, string> = {
+  'chat.started': 'A chat started',
+  'chat.ended': 'A chat ended (with the transcript)',
+  'chat.rated': 'A visitor rated a chat',
+  'offline_message.created': 'A visitor left an offline message',
+  'ticket.created': 'A ticket was created',
+  'ticket.status_changed': 'A ticket’s status changed',
+  'ticket.customer_replied': 'A customer replied to a ticket by email',
+};
+
+/** The person behind a chat or ticket. */
+export interface EventCustomer {
+  id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+}
+
+export interface ChatEventData {
+  conversation: Conversation;
+  customer: EventCustomer;
+  /** chat.ended: the visible transcript (agents-only notes left out). */
+  messages?: Message[];
+}
+
+export interface TicketEventData {
+  ticket: Ticket;
+  /** ticket.status_changed */
+  previousStatus?: TicketStatus;
+  /** ticket.customer_replied */
+  message?: TicketMessage;
+}
+
+/** What Replyfinch POSTs to a webhook. */
+export interface WebhookEvent<T = unknown> {
+  id: string;
+  type: WebhookEventType | 'ping';
+  createdAt: string;
+  accountId: string;
+  data: T;
+}
+
+export interface Webhook {
+  id: string;
+  url: string;
+  events: WebhookEventType[];
+  description: string;
+  enabled: boolean;
+  source: 'settings' | 'api';
+  /** Shown so the receiver can check signatures. */
+  secret: string;
+  lastStatus: number | null;
+  lastError: string | null;
+  lastDeliveryAt: number | null;
+  failingSince: number | null;
+  createdAt: number;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  eventId: string;
+  type: string;
+  status: 'pending' | 'sending' | 'succeeded' | 'failed';
+  attempts: number;
+  responseStatus: number | null;
+  responseBody: string | null;
+  error: string | null;
+  createdAt: number;
+  nextAttemptAt: number | null;
+  deliveredAt: number | null;
+  payload: WebhookEvent;
+}
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  prefix: string;
+  createdAt: number;
+  lastUsedAt: number | null;
+  createdByName: string | null;
 }

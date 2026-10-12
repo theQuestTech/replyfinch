@@ -37,6 +37,9 @@ import { createMailActions } from './services/mail-actions';
 import { createAiService, type AiClient } from './services/ai';
 import { createLogMailer, createMailer, EmailError, fetchReceivedEmail, type Mailer, type ReceivedEmail } from './email';
 import { createInboundService } from './services/inbound';
+import { createWebhookService } from './services/webhooks';
+import { createApiKeyService } from './services/api-keys';
+import { integrationRoutes, publicApiRoutes } from './routes/integrations';
 import { inboundRoutes } from './routes/inbound';
 import { settingsRoutes } from './routes/settings';
 import { ticketRoutes } from './routes/tickets';
@@ -59,6 +62,8 @@ export async function buildApp(
     aiClient?: AiClient | null;
     /** Tests: read received emails from here instead of Resend's API. */
     fetchReceivedEmail?: (id: string) => Promise<ReceivedEmail>;
+    /** Tests: shorter waits between webhook retries. */
+    webhookRetryDelaysMs?: number[];
   } = {},
 ) {
   const app = Fastify({
@@ -70,15 +75,19 @@ export async function buildApp(
   const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 3 });
   const auth = createAuth(env.JWT_SECRET);
   const presence = createPresence(redis);
-  const conversations = createConversationService(db);
+  // Webhooks: services announce events (a chat ended, a ticket was created…) and matching webhooks get them.
+  const webhooks = createWebhookService({ db, allowPrivate: env.NODE_ENV !== 'production', retryDelaysMs: opts.webhookRetryDelaysMs });
+  const stopWebhooks = webhooks.start();
+  const apiKeys = createApiKeyService(db);
+  const conversations = createConversationService(db, webhooks.bus);
   const visitors = createVisitorService(db);
   const stats = createStatsService(db, presence);
   const shortcuts = createShortcutService(db);
   const history = createHistoryService(db);
-  const offline = createOfflineService(db);
+  const offline = createOfflineService(db, webhooks.bus);
   const widgetSettings = createWidgetSettingsService(db);
   const reports = createReportService(db);
-  const tickets = createTicketService(db);
+  const tickets = createTicketService(db, webhooks.bus);
   const help = createHelpService(db);
   const customers = createCustomerService(db, history, offline, tickets);
   const logMailer = env.EMAIL_TRANSPORT === 'log' && env.NODE_ENV !== 'production' ? createLogMailer(env.EMAIL_FROM ?? 'Replyfinch <dev@replyfinch.dev>') : null;
@@ -205,6 +214,7 @@ export async function buildApp(
     r.addHook('preHandler', requireAgent);
     await settingsRoutes(r, { db, auth, realtime, shortcuts, widgetSettings, ai });
     await helpAgentRoutes(r, { help });
+    await integrationRoutes(r, { db, webhooks, apiKeys });
     await ticketRoutes(r, { db, tickets, conversations, offline, visitors, mail, realtime, replyLimit: limit('ticket-message', 60, 60, (req) => req.agent.sub) });
 
     r.get('/me', async (req) => {
@@ -437,6 +447,17 @@ export async function buildApp(
     return siteTicket(reply, { name: b.name, email: b.email, subject: `${b.topic}: ${first.length > 70 ? `${first.slice(0, 70)}…` : first}`, body: b.message });
   });
 
+  await publicApiRoutes(app, {
+    db,
+    apiKeys,
+    webhooks,
+    tickets,
+    conversations,
+    offline,
+    limit: limit('api', 120, 60, (req) => req.apiKey?.keyId ?? req.ip),
+    onTicket: (acc, t) => realtime.ticketChanged(acc, t),
+  });
+
   await inboundRoutes(app, {
     inbound,
     secret: env.RESEND_WEBHOOK_SECRET,
@@ -447,6 +468,7 @@ export async function buildApp(
   await helpPublicRoutes(app, { help, widgetSettings, accountExists: (id) => visitors.accountExists(id), redis, limit: (n, m, w) => limit(n, m, w) });
 
   app.addHook('onClose', async () => {
+    stopWebhooks();
     await realtime.close();
     redis.disconnect();
     await sql.end();

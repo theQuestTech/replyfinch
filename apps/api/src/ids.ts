@@ -16,4 +16,8 @@ export const newId = {
   ticketMessage: () => `tm_${ulid()}`,
   helpCategory: () => `hc_${ulid()}`,
   helpArticle: () => `ha_${ulid()}`,
+  webhook: () => `wh_${ulid()}`,
+  webhookDelivery: () => `whd_${ulid()}`,
+  event: () => `evt_${ulid()}`,
+  apiKey: () => `key_${ulid()}`,
 };

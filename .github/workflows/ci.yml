@@ -35,6 +35,9 @@ jobs:
       - run: pnpm --filter @replyfinch/api test
       - run: pnpm --filter @replyfinch/web test
       - run: pnpm build
+      - name: Zapier app
+        working-directory: integrations/zapier
+        run: npm ci && npm test
 
   e2e:
     runs-on: ubuntu-latest

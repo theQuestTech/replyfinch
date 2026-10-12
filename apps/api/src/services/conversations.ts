@@ -3,6 +3,7 @@ import type { Conversation, Message } from '@replyfinch/shared';
 import type { Db } from '../db/client';
 import { conversations, messages, users, visitors } from '../db/schema';
 import { newId } from '../ids';
+import { eventCustomer, noEvents, type EventBus } from './webhooks';
 
 type ConvRow = typeof conversations.$inferSelect;
 type MsgRow = typeof messages.$inferSelect;
@@ -33,7 +34,25 @@ export function messageDto(m: MsgRow): Message {
   };
 }
 
-export function createConversationService(db: Db) {
+export function createConversationService(db: Db, bus: EventBus = noEvents) {
+  /** Webhook payload for chat events. */
+  const chatEvent = (row: ConvRow, withTranscript = false) => async () => ({
+    conversation: await dto(row),
+    customer: await eventCustomer(db, row.visitorId),
+    ...(withTranscript
+      ? {
+          messages: (
+            await db
+              .select()
+              .from(messages)
+              .where(and(eq(messages.conversationId, row.id), eq(messages.internal, false)))
+              .orderBy(asc(messages.createdAt))
+              .limit(500)
+          ).map(messageDto),
+        }
+      : {}),
+  });
+
   /** Build many conversation DTOs with a fixed number of queries (not 3 per conversation). */
   async function dtoMany(rows: ConvRow[]): Promise<Conversation[]> {
     if (rows.length === 0) return [];
@@ -195,6 +214,7 @@ export function createConversationService(db: Db) {
           body: `Thanks ${input.name.split(' ')[0]}! I've passed your chat to ${team} — an agent will join in a moment.`,
         })).message,
       );
+      bus.emit(accountId, 'chat.started', chatEvent(conv!));
       return { conversation: conv!, messages: created.map(messageDto) };
     },
 
@@ -221,6 +241,7 @@ export function createConversationService(db: Db) {
         body: `${agent.name} started the chat`,
       });
       const msg = await insertMessage(conv!, { authorType: 'agent', authorId: agent.id, authorName: agent.name, body, clientId });
+      bus.emit(accountId, 'chat.started', chatEvent(conv!));
       return { conversation: conv!, messages: [messageDto(sys.message), messageDto(msg.message)] };
     },
 
@@ -342,6 +363,7 @@ export function createConversationService(db: Db) {
             : `${visitorName} rated the chat ${label}${comment ? `: “${comment}”` : ''}`,
         internal: true,
       });
+      bus.emit(updated!.accountId, 'chat.rated', chatEvent(updated!));
       return { conversation: updated!, message: messageDto(note.message) };
     },
 
@@ -359,6 +381,7 @@ export function createConversationService(db: Db) {
         authorName: by.name,
         body: note,
       });
+      bus.emit(updated.accountId, 'chat.ended', chatEvent(updated, true));
       return { conversation: updated, message: messageDto(sys.message) };
     },
   };

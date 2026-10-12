@@ -207,7 +207,7 @@ export const tickets = pgTable(
     requesterName: text('requester_name'),
     requesterEmail: text('requester_email'),
     /** Where it came from: typed in by an agent, a chat, an offline message, an email to the support address, or a website form. */
-    source: text('source', { enum: ['manual', 'chat', 'offline', 'email', 'website'] }).notNull().default('manual'),
+    source: text('source', { enum: ['manual', 'chat', 'offline', 'email', 'website', 'api'] }).notNull().default('manual'),
     sourceId: text('source_id'),
     createdBy: text('created_by').references(() => users.id),
     createdAt: createdAt(),
@@ -277,4 +277,77 @@ export const helpArticles = pgTable(
     uniqueIndex('help_articles_account_slug_idx').on(t.accountId, t.slug),
     index('help_articles_account_status_idx').on(t.accountId, t.status),
   ],
+);
+
+/** Webhooks: Replyfinch POSTs events (a chat ended, a ticket was created…) to these addresses. */
+export const webhooks = pgTable(
+  'webhooks',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull().references(() => accounts.id),
+    url: text('url').notNull(),
+    events: text('events').array().notNull(),
+    /** Signs every delivery (the Replyfinch-Signature header), so the receiver can check it came from us. */
+    secret: text('secret').notNull(),
+    description: text('description').notNull().default(''),
+    enabled: boolean('enabled').notNull().default(true),
+    /** Added in Settings, or subscribed through the API (Zapier). */
+    source: text('source', { enum: ['settings', 'api'] }).notNull().default('settings'),
+    apiKeyId: text('api_key_id'),
+    createdBy: text('created_by').references(() => users.id),
+    lastStatus: integer('last_status'),
+    lastError: text('last_error'),
+    lastDeliveryAt: timestamp('last_delivery_at', { withTimezone: true }),
+    /** Deliveries that failed in a row (after all retries); resets on a success. */
+    failingSince: timestamp('failing_since', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('webhooks_account_idx').on(t.accountId)],
+);
+
+/** One event for one webhook, with its retries. */
+export const webhookDeliveries = pgTable(
+  'webhook_deliveries',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull().references(() => accounts.id),
+    webhookId: text('webhook_id')
+      .notNull()
+      .references(() => webhooks.id, { onDelete: 'cascade' }),
+    /** The same event delivered to several webhooks shares this id. */
+    eventId: text('event_id').notNull(),
+    type: text('type').notNull(),
+    payload: jsonb('payload').notNull(),
+    status: text('status', { enum: ['pending', 'sending', 'succeeded', 'failed'] }).notNull().default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    responseStatus: integer('response_status'),
+    responseBody: text('response_body'),
+    error: text('error'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('webhook_deliveries_due_idx').on(t.status, t.nextAttemptAt),
+    index('webhook_deliveries_webhook_idx').on(t.webhookId, t.createdAt),
+  ],
+);
+
+/** Keys other apps (Zapier, your own scripts) use to call the Replyfinch API. Only a hash is stored. */
+export const apiKeys = pgTable(
+  'api_keys',
+  {
+    id: text('id').primaryKey(),
+    accountId: text('account_id').notNull().references(() => accounts.id),
+    name: text('name').notNull(),
+    /** The first characters, to recognise a key in the list. */
+    prefix: text('prefix').notNull(),
+    hash: text('hash').notNull(),
+    createdBy: text('created_by').references(() => users.id),
+    createdAt: createdAt(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (t) => [uniqueIndex('api_keys_hash_idx').on(t.hash), index('api_keys_account_idx').on(t.accountId)],
 );

@@ -213,6 +213,7 @@ function Source({ ticket }: { ticket: Ticket }) {
     );
   }
   if (ticket.source === 'website') return <div>From a form on your website</div>;
+  if (ticket.source === 'api') return <div>Created by a connected app (for example Zapier)</div>;
   if (ticket.source === 'email') {
     return (
       <div className="flex items-center gap-1.5">

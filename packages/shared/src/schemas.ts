@@ -270,3 +270,41 @@ export const contactSchema = z.object({
   message: z.string().trim().min(1, 'Please write a message').max(5000),
   fax: z.string().max(200).optional(),
 });
+
+const webhookEvent = z.enum([
+  'chat.started',
+  'chat.ended',
+  'chat.rated',
+  'offline_message.created',
+  'ticket.created',
+  'ticket.status_changed',
+  'ticket.customer_replied',
+]);
+const hookUrl = z.url({ protocol: /^https?$/, error: 'Use a web address starting with https://' }).max(2000);
+
+export const webhookCreateSchema = z.object({
+  url: hookUrl,
+  events: z.array(webhookEvent).min(1, 'Pick at least one event').max(20),
+  description: z.string().trim().max(200).default(''),
+});
+
+export const webhookUpdateSchema = z.object({
+  url: hookUrl.optional(),
+  events: z.array(webhookEvent).min(1, 'Pick at least one event').max(20).optional(),
+  description: z.string().trim().max(200).optional(),
+  enabled: z.boolean().optional(),
+});
+
+export const apiKeyCreateSchema = z.object({ name: z.string().trim().min(1, 'Give the key a name').max(80) });
+
+/** Zapier-style subscription: POST /v1/hooks. */
+export const hookSubscribeSchema = z.object({ url: hookUrl, event: webhookEvent });
+
+/** POST /v1/tickets */
+export const apiTicketCreateSchema = z.object({
+  subject: z.string().trim().min(1, 'Add a subject').max(200),
+  description: z.string().trim().max(5000).default(''),
+  name: z.string().trim().max(120).optional(),
+  email: z.union([z.email(), z.literal('')]).optional(),
+  priority: z.enum(['low', 'normal', 'high', 'urgent']).default('normal'),
+});

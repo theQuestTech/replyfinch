@@ -27,6 +27,7 @@ import { Shortcuts } from './pages/settings/Shortcuts';
 import { ChatWidget } from './pages/settings/ChatWidget';
 import { EmailSettings } from './pages/settings/EmailSettings';
 import { AiAssistant } from './pages/settings/AiAssistant';
+import { Integrations } from './pages/settings/Integrations';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const token = useAuth((s) => s.token);
@@ -82,6 +83,7 @@ createRoot(document.getElementById('root')!).render(
               <Route path="widget" element={<ChatWidget />} />
               <Route path="email" element={<EmailSettings />} />
               <Route path="ai" element={<AiAssistant />} />
+              <Route path="integrations" element={<Integrations />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Route>

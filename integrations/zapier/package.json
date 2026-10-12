@@ -1,0 +1,19 @@
+{
+  "name": "replyfinch-zapier",
+  "version": "1.0.0",
+  "description": "Replyfinch for Zapier: triggers for chats, offline messages and tickets, and a Create Ticket action.",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "zapier-platform-core": "19.2.0"
+  },
+  "devDependencies": {
+    "zapier-platform-schema": "19.2.0"
+  }
+}

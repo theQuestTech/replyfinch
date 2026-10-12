@@ -5,6 +5,7 @@ import { accounts, ticketMessages, tickets, users, visitors } from '../db/schema
 import { newId } from '../ids';
 import { isUniqueViolation } from './conversations';
 import type { OfflineService } from './offline';
+import { noEvents, type EventBus } from './webhooks';
 
 type Row = typeof tickets.$inferSelect;
 type MsgRow = typeof ticketMessages.$inferSelect;
@@ -26,7 +27,7 @@ const msgDto = (m: MsgRow): TicketMessage => ({
   createdAt: m.createdAt.getTime(),
 });
 
-export function createTicketService(db: Db) {
+export function createTicketService(db: Db, bus: EventBus = noEvents) {
   /** One query for every agent name the rows mention. */
   async function dtoMany(rows: Row[]): Promise<Ticket[]> {
     const ids = [...new Set(rows.flatMap((r) => [r.assigneeId, r.createdBy]).filter((x): x is string => !!x))];
@@ -135,6 +136,9 @@ export function createTicketService(db: Db) {
           .where(eq(tickets.id, row.id))
           .returning();
         return { row: updated!, message: msgDto(m!), reopened: row.status !== 'open' };
+      }).then((r) => {
+        bus.emit(row.accountId, 'ticket.customer_replied', async () => ({ ticket: await dto(r.row), message: r.message }));
+        return r;
       });
     },
 
@@ -205,6 +209,7 @@ export function createTicketService(db: Db) {
             await insertMessages(accountId, r!.id, t.messages, tx);
             return r!;
           });
+          bus.emit(accountId, 'ticket.created', async () => ({ ticket: await dto(row) }));
           return row;
         } catch (err) {
           if (attempt < 4 && isUniqueViolation(err)) continue;
@@ -315,6 +320,7 @@ export function createTicketService(db: Db) {
         row.id,
         events.map((body) => ({ kind: 'event' as const, author: by, body })),
       );
+      if (set.status) bus.emit(accountId, 'ticket.status_changed', async () => ({ ticket: await dto(updated!), previousStatus: row.status }));
       return { row: updated!, events: msgs.map(msgDto) };
     },
 
